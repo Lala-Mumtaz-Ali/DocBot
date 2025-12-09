@@ -5,3 +5,7 @@ torch
 pymongo
 python-dotenv
 requests
+python-multipart
+pypdf
+pymupdf
+pillow

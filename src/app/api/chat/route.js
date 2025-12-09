@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 
 export async function POST(req) {
     try {
-        const { message } = await req.json();
+        const { message, history } = await req.json();
 
         if (!message) {
             return NextResponse.json({ error: 'Message is required' }, { status: 400 });
@@ -17,7 +17,10 @@ export async function POST(req) {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ message: message }),
+                body: JSON.stringify({
+                    message: message,
+                    history: history || []
+                }),
             });
 
             if (!pythonResponse.ok) {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { FaPaperPlane, FaRobot, FaUser } from 'react-icons/fa';
+import { FaPaperPlane, FaRobot, FaUser, FaPaperclip } from 'react-icons/fa';
 import { motion, AnimatePresence } from 'framer-motion';
 import styles from '../style/chat.module.css';
 import Navbar from '../_components/navbar';
@@ -40,11 +40,22 @@ export default function ChatPage() {
         setInput('');
         setIsLoading(true);
 
+        // Create history from existing messages (excluding errors and welcome msg if prefered)
+        const history = messages
+            .filter(msg => !msg.id.startsWith('err-') && msg.id !== 'welcome-msg')
+            .map(msg => ({
+                role: msg.role,
+                content: msg.content
+            }));
+
         try {
             const response = await fetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: input }),
+                body: JSON.stringify({
+                    message: input,
+                    history: history
+                }),
             });
 
             if (!response.ok) throw new Error('Failed to fetch response');
@@ -69,6 +80,57 @@ export default function ChatPage() {
         }
     };
 
+    const handleFileUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // Add user message indicating upload
+        const userMsgId = `user-${Date.now()}`;
+        setMessages((prev) => [
+            ...prev,
+            { id: userMsgId, role: 'user', content: `📄 Uploaded: **${file.name}**` }
+        ]);
+        setIsLoading(true);
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const response = await fetch('/api/analyze', {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!response.ok) throw new Error('Analysis failed');
+
+            const data = await response.json();
+
+            // Add bot response with analysis
+            setMessages((prev) => [
+                ...prev,
+                { id: `bot-${Date.now()}`, role: 'bot', content: data.reply }
+            ]);
+
+            // Append extracted text to history as a system/hidden context
+            setMessages(prev => {
+                return [
+                    ...prev,
+                    { id: `ctx-${Date.now()}`, role: 'model', content: `\n\n[CONTEXT FROM PDF]:\n${data.extracted_text}\n\n`, hidden: true }
+                ];
+            });
+
+        } catch (error) {
+            console.error('Upload Error:', error);
+            setMessages((prev) => [
+                ...prev,
+                { id: `err-${Date.now()}`, role: 'bot', content: '**Error**: Could not analyze the report.' }
+            ]);
+        } finally {
+            setIsLoading(false);
+            e.target.value = null; // Reset input
+        }
+    };
+
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', backgroundColor: '#f0f2f5' }}>
             <Navbar />
@@ -76,28 +138,32 @@ export default function ChatPage() {
                 <div className={styles.messagesContainer}>
                     <AnimatePresence>
                         {messages.map((msg) => (
-                            <motion.div
-                                key={msg.id}
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0 }}
-                                className={`${styles.messageWrapper} ${msg.role === 'user' ? styles.userMessage : styles.botMessage}`}
-                            >
-                                <div className={`${styles.avatar} ${msg.role === 'user' ? styles.userAvatar : styles.botAvatar}`}>
-                                    {msg.role === 'user' ? <FaUser /> : <FaRobot />}
-                                </div>
-                                <div className={`${styles.messageContent} ${msg.role === 'user' ? styles.userContent : styles.botContent}`}>
-                                    {msg.role === 'bot' ? (
-                                        <div className={styles.markdownBody}>
+                            !msg.hidden && (
+                                <motion.div
+                                    key={msg.id}
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0 }}
+                                    className={`${styles.messageWrapper} ${msg.role === 'user' ? styles.userMessage : styles.botMessage}`}
+                                >
+                                    <div className={`${styles.avatar} ${msg.role === 'user' ? styles.userAvatar : styles.botAvatar}`}>
+                                        {msg.role === 'user' ? <FaUser /> : <FaRobot />}
+                                    </div>
+                                    <div className={`${styles.messageContent} ${msg.role === 'user' ? styles.userContent : styles.botContent}`}>
+                                        {msg.role === 'bot' || msg.role === 'model' ? (
+                                            <div className={styles.markdownBody}>
+                                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                    {msg.content}
+                                                </ReactMarkdown>
+                                            </div>
+                                        ) : (
                                             <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                                 {msg.content}
                                             </ReactMarkdown>
-                                        </div>
-                                    ) : (
-                                        msg.content
-                                    )}
-                                </div>
-                            </motion.div>
+                                        )}
+                                    </div>
+                                </motion.div>
+                            )
                         ))}
                     </AnimatePresence>
                     {isLoading && (
@@ -122,6 +188,16 @@ export default function ChatPage() {
                 </div>
 
                 <form onSubmit={sendMessage} className={styles.inputArea}>
+                    <label className={styles.uploadButton}>
+                        <FaPaperclip />
+                        <input
+                            type="file"
+                            hidden
+                            accept=".pdf"
+                            onChange={handleFileUpload}
+                            disabled={isLoading}
+                        />
+                    </label>
                     <input
                         type="text"
                         value={input}

@@ -2,7 +2,11 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from pymongo import MongoClient
 from transformers import pipeline, AutoConfig
+from fastapi import FastAPI, HTTPException, UploadFile, File
+import fitz # PyMuPDF
+import io
 import os
+import base64
 from dotenv import load_dotenv
 from embeddings import OllamaEmbeddings
 import torch
@@ -39,17 +43,33 @@ ollama = OllamaEmbeddings()
 
 # Generative Model Setup
 GEN_MODEL = "deepseek-r1:1.5b"
+VISION_MODEL = "llava" # Or llava-phi3
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
 class ChatRequest(BaseModel):
     message: str
+    history: list[dict] = []
 
-def generate_deepseek_response(context, question):
+def generate_deepseek_response(context, question, history):
     url = f"{OLLAMA_BASE_URL}/api/generate"
-    prompt = f"""You are a helpful medical assistant. Answer the user's question using ONLY the provided medical context below. If the context does not contain the answer, say "I don't know based on the provided information." and suggest seeing a doctor.
+    
+    # Format history
+    history_text = ""
+    for msg in history:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        if role == "user":
+            history_text += f"User: {content}\n"
+        else:
+            history_text += f"Assistant: {content}\n"
+
+    prompt = f"""You are a helpful medical assistant. Answer the user's question using the provided medical context and conversation history. If the context does not contain the answer, say "I don't know based on the provided information." and suggest seeing a doctor.
 
 Context:
 {context}
+
+History:
+{history_text}
 
 Question: {question}
 Answer:"""
@@ -75,6 +95,7 @@ def read_root():
 @app.post("/chat")
 def chat(request: ChatRequest):
     user_message = request.message
+    history = request.history
     print(f"\n=== NEW QUERY PROCESSING START (HYBRID RAG) ===")
     print(f"Step 1: User Input -> '{user_message}'")
 
@@ -148,7 +169,7 @@ def chat(request: ChatRequest):
         # 5. DeepSeek Generation
         print("\nStep 6: Generation (DeepSeek-R1)")
         print(f"   Action: Sending prompt to {GEN_MODEL}...")
-        final_answer = generate_deepseek_response(context_text, user_message)
+        final_answer = generate_deepseek_response(context_text, user_message, history[-5:]) # Pass last 5 turns
         print(f"   Output: {final_answer}")
 
         print("=== QUERY PROCESSING COMPLETE ===\n")
@@ -171,6 +192,93 @@ def chat(request: ChatRequest):
 
     except Exception as e:
         print(f"ERROR: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/analyze_report")
+async def analyze_report(file: UploadFile = File(...)):
+    print(f"\n=== NEW REPORT ANALYSIS START (VISION) ===")
+    print(f"File: {file.filename}")
+    
+    try:
+        # 1. Read PDF
+        contents = await file.read()
+        
+        # Open PDF with PyMuPDF
+        doc = fitz.open(stream=contents, filetype="pdf")
+        
+        full_analysis = ""
+        extracted_text_summary = ""
+
+        # Process each page (limit to first 3 pages to avoid timeout)
+        for page_num, page in enumerate(doc):
+            if page_num >= 3: 
+                break
+                
+            print(f"   Processing Page {page_num + 1}...")
+            
+            # --- VISION PART ---
+            # Render page to image
+            pix = page.get_pixmap()
+            img_data = pix.tobytes("png")
+            img_b64 = base64.b64encode(img_data).decode("utf-8")
+            
+            # --- CALL VISION MODEL ---
+            prompt_vision = "Analyze this medical report page. Identify all key statistics, lab values, and abnormalities. Transcribe visible text and format it as a summary."
+            
+            url = f"{OLLAMA_BASE_URL}/api/generate"
+            payload = {
+                "model": VISION_MODEL,
+                "prompt": prompt_vision,
+                "images": [img_b64],
+                "stream": False
+            }
+            
+            print(f"   Action: Sending page image to {VISION_MODEL}...")
+            try:
+                response = requests.post(url, json=payload)
+                if response.status_code != 200:
+                    print(f"   ERROR: Ollama returned {response.status_code}")
+                    print(f"   Response Body: {response.text}")
+                    
+                response.raise_for_status()
+                page_analysis = response.json().get("response", "").strip()
+                full_analysis += f"\n--- Page {page_num + 1} Analysis ---\n{page_analysis}\n"
+            except Exception as e:
+                print(f"   Warning: Vision model failed for page {page_num+1}: {e}")
+                print("   Action: Falling back to text extraction for this page.")
+                page_text = page.get_text()
+                if page_text.strip():
+                     # Send text to DeepSeek instead
+                     prompt_fallback = f"Analyze the following text from a medical report page: \n{page_text}"
+                     try:
+                         fallback_response = requests.post(f"{OLLAMA_BASE_URL}/api/generate", json={"model": GEN_MODEL, "prompt": prompt_fallback, "stream": False})
+                         if fallback_response.status_code == 200:
+                             full_analysis += f"\n--- Page {page_num + 1} (Text Fallback) ---\n{fallback_response.json().get('response', '')}\n"
+                     except:
+                         pass
+                # Fallback to text extraction if vision fails? For now, just continue
+            
+            # Extract raw text for context history
+            extracted_text_summary += page.get_text() + "\n"
+
+        doc.close()
+
+        if not full_analysis.strip():
+             return {"reply": "I couldn't analyze the images in this file. Please ensure 'llava' is installed (`ollama pull llava`).", "extracted_text": ""}
+
+        # 3. Final Synthesis (Optional: Use DeepSeek to summarize the Llava output if it's too long, but raw Llava output is usually good)
+        # We will return the Llava analysis directly.
+        
+        print(f"   Output: Vision analysis complete.")
+        print("=== REPORT ANALYSIS COMPLETE ===\n")
+        
+        return {
+            "reply": full_analysis,
+            "extracted_text": extracted_text_summary # Still return text for history context
+        }
+
+    except Exception as e:
+        print(f"ERROR Analyzing Report: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
