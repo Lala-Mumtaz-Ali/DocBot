@@ -1,0 +1,128 @@
+/* ===== Profile Page Layout ===== */
+.profileContainer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: calc(100vh - 80px);
+  background: linear-gradient(120deg, #e0f7f7 0%, #ffffff 100%);
+  padding: 40px 16px;
+}
+
+.profileCard {
+  background: white;
+  border-radius: 20px;
+  padding: 30px 40px;
+  box-shadow: 0 8px 20px rgba(0, 128, 128, 0.1);
+  width: 100%;
+  max-width: 480px;
+  text-align: center;
+  transition: all 0.3s ease;
+}
+
+.profileCard:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 28px rgba(0, 128, 128, 0.15);
+}
+
+/* ===== Avatar Section ===== */
+.avatarSection {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.avatar {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 3px solid darkcyan;
+  object-fit: cover;
+  margin-bottom: 12px;
+}
+
+.defaultAvatar {
+  font-size: 120px;
+  color: darkcyan;
+  margin-bottom: 8px;
+}
+
+.userName {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #222;
+  margin-bottom: 4px;
+}
+
+.userRole {
+  font-size: 1rem;
+  color: gray;
+}
+
+/* ===== Info Section ===== */
+.infoSection {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  margin: 20px 0;
+}
+
+.infoItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #333;
+  font-size: 1rem;
+  background: #f8fafa;
+  padding: 10px 14px;
+  border-radius: 10px;
+  width: 100%;
+  transition: background 0.3s ease;
+}
+
+.infoItem:hover {
+  background: #e8f6f6;
+}
+
+.icon {
+  color: darkcyan;
+  font-size: 1.2rem;
+}
+
+/* ===== Edit Button ===== */
+.editButton {
+  background: darkcyan;
+  color: white;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 1rem;
+  transition: background 0.3s ease, transform 0.2s ease;
+}
+
+.editButton:hover {
+  background: teal;
+  transform: scale(1.03);
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 600px) {
+  .profileCard {
+    padding: 24px;
+  }
+
+  .userName {
+    font-size: 1.5rem;
+  }
+
+  .infoItem {
+    font-size: 0.95rem;
+  }
+
+  .editButton {
+    width: 100%;
+  }
+}
