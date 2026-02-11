@@ -32,7 +32,7 @@ export default function RecordPage() {
         // ✅ Normalize file URL for display
         const normalized = data.records.map((rec) => ({
           ...rec,
-          fileUrl: `/api/cdn/${rec.fileName}` // Use robust CDN route
+          fileUrl: `/api/records/${rec._id}` // Use new DB file route
         }));
         setRecords(normalized);
       } else {

@@ -12,9 +12,13 @@ const recordSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
-    fileUrl: {
-      type: String,
+    fileData: {
+      type: Buffer, // Store binary data
       required: true,
+    },
+    fileUrl: {
+      type: String, // Keep for backward compatibility or direct access if needed
+      required: false,
     },
     fileType: {
       type: String,

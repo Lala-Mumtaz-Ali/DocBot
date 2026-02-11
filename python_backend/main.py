@@ -12,6 +12,7 @@ from embeddings import OllamaEmbeddings
 import torch
 import requests
 import json
+import re
 
 # Load environment variables
 load_dotenv(".env.local")
@@ -51,39 +52,47 @@ class ChatRequest(BaseModel):
     history: list[dict] = []
 
 def generate_deepseek_response(context, question, history):
-    url = f"{OLLAMA_BASE_URL}/api/generate"
+    # Use Chat API for better structure (handles system prompt & history)
+    url = f"{OLLAMA_BASE_URL}/api/chat"
     
-    # Format history
-    history_text = ""
+    messages = []
+    
+    # System Prompt
+    system_prompt = """You are a helpful medical assistant. Answer the user's question using the provided medical context. 
+If the answer is not in the context, say "I don't know based on the provided information." and suggest seeing a doctor.
+Do not hallucinate. Keep the answer concise."""
+    
+    messages.append({"role": "system", "content": system_prompt})
+
+    # Add Conversation History
     for msg in history:
         role = msg.get("role", "user")
         content = msg.get("content", "")
-        if role == "user":
-            history_text += f"User: {content}\n"
-        else:
-            history_text += f"Assistant: {content}\n"
+        # Map generic roles if needed, but 'user'/'assistant' are standard
+        messages.append({"role": role, "content": content})
 
-    prompt = f"""You are a helpful medical assistant. Answer the user's question using the provided medical context and conversation history. If the context does not contain the answer, say "I don't know based on the provided information." and suggest seeing a doctor.
-
-Context:
-{context}
-
-History:
-{history_text}
-
-Question: {question}
-Answer:"""
+    # Add Current Context and Question as User Message
+    user_input = f"Context:\n{context}\n\nQuestion: {question}"
+    messages.append({"role": "user", "content": user_input})
     
     payload = {
         "model": GEN_MODEL,
-        "prompt": prompt,
+        "messages": messages,
         "stream": False
     }
     
     try:
         response = requests.post(url, json=payload)
         response.raise_for_status()
-        return response.json().get("response", "").strip()
+        
+        # Parse Chat Response
+        content = response.json().get("message", {}).get("content", "")
+        
+        # Clean <think> tags if present (DeepSeek-R1 specific)
+        content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL).strip()
+        
+        return content
+
     except Exception as e:
         print(f"DeepSeek Generation Error: {e}")
         return f"Error generating response with {GEN_MODEL}. Please check logs."

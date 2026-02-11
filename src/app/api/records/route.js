@@ -146,25 +146,30 @@ export async function POST(req) {
       return NextResponse.json({ success: false, message: "No file provided" }, { status: 400 });
     }
 
-    const uploadsDir = path.join(process.cwd(), "public", "uploads");
-    if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+    // Check file size (limit: 10MB)
+    const MAX_SIZE = 10 * 1024 * 1024;
+    if (file.size > MAX_SIZE) {
+      return NextResponse.json({ success: false, message: "File too large (Max 10MB)" }, { status: 400 });
+    }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const safeFileName = Date.now() + "-" + file.name.replace(/[^\w\s.-]/gi, "");
-    const filePath = path.join(uploadsDir, safeFileName);
-    fs.writeFileSync(filePath, buffer);
+    const safeFileName = file.name.replace(/[^\w\s.-]/gi, "");
 
     const fileType = file.type.includes("pdf") ? "pdf" : "image";
-    const fileUrl = `/uploads/${safeFileName}`;
 
+    // Create record with file data
     const record = await Record.create({
       userId: userData.id,
       fileName: safeFileName,
-      fileUrl,
+      fileData: buffer, // Store binary
       fileType,
     });
 
-    return NextResponse.json({ success: true, record }, { status: 201 });
+    // Return record without the heavy buffer
+    const recordObj = record.toObject();
+    delete recordObj.fileData;
+
+    return NextResponse.json({ success: true, record: recordObj }, { status: 201 });
   } catch (err) {
     console.error("❌ POST Error:", err);
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });
@@ -177,7 +182,10 @@ export async function GET(req) {
     await connectDB();
     const userData = await verifyToken(req);
 
-    const records = await Record.find({ userId: userData.id }).sort({ uploadedAt: -1 });
+    // Exclude fileData from the list to improve performance
+    const records = await Record.find({ userId: userData.id })
+      .select("-fileData")
+      .sort({ uploadedAt: -1 });
 
     return NextResponse.json({ success: true, records }, { status: 200 });
   } catch (err) {
@@ -195,9 +203,6 @@ export async function DELETE(req) {
 
     const record = await Record.findOneAndDelete({ _id: recordId, userId: userData.id });
     if (!record) return NextResponse.json({ success: false, message: "Not found" }, { status: 404 });
-
-    const filePath = path.join(process.cwd(), "public", record.fileUrl);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 
     return NextResponse.json({ success: true, message: "Deleted successfully" }, { status: 200 });
   } catch (err) {
