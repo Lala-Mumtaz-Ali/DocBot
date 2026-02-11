@@ -29,12 +29,8 @@ export default function RecordPage() {
       const data = await res.json();
 
       if (res.ok && data.records) {
-        // ✅ Normalize file URL for display
-        const normalized = data.records.map((rec) => ({
-          ...rec,
-          fileUrl: `/api/records/${rec._id}` // Use new DB file route
-        }));
-        setRecords(normalized);
+        // ✅ We don't need fileUrl here immediately due to auth issue
+        setRecords(data.records);
       } else {
         console.error("❌", data.message);
       }
@@ -49,6 +45,11 @@ export default function RecordPage() {
 
   useEffect(() => {
     if (activeTab === "view" && token) fetchRecords();
+
+    // ✅ Close preview when switching tabs
+    setPreviewId(null);
+    setFullScreenId(null);
+    setZoom(1);
   }, [activeTab]);
 
   // ✅ File input
@@ -89,9 +90,13 @@ export default function RecordPage() {
     }
   };
 
-  // ✅ Delete
+  // ✅ Delete (Optimistic UI)
   const handleDelete = async (id) => {
     if (!confirm("Are you sure you want to delete this record?")) return;
+
+    // 1. Optimistic Update: Remove from UI immediately
+    const previousRecords = [...records];
+    setRecords((prev) => prev.filter((r) => r._id !== id));
 
     try {
       const res = await fetch("/api/records", {
@@ -104,13 +109,75 @@ export default function RecordPage() {
       });
 
       const data = await res.json();
-      if (res.ok) {
-        setRecords((prev) => prev.filter((r) => r._id !== id));
-      } else {
+      if (!res.ok) {
+        // Rollback if failed
         alert(`❌ ${data.message || "Delete failed"}`);
+        setRecords(previousRecords);
       }
     } catch (err) {
       console.error("❌ Delete Error:", err);
+      alert("❌ Delete failed (Network Error)");
+      setRecords(previousRecords);
+    }
+  };
+
+  // ✅ Authenticated Fetch for Blob
+  const fetchFileBlob = async (recordId) => {
+    try {
+      const res = await fetch(`/api/records/${recordId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to load file");
+      const blob = await res.blob();
+      return URL.createObjectURL(blob);
+    } catch (err) {
+      console.error("Error fetching file:", err);
+      alert("Error loading file. Please try again.");
+      return null;
+    }
+  };
+
+  const handlePreview = async (rec) => {
+    if (previewId === rec._id) {
+      setPreviewId(null);
+      return;
+    }
+
+    // Check cache first
+    if (rec.tempUrl) {
+      setPreviewId(rec._id);
+      return;
+    }
+
+    setLoading(true);
+    const blobUrl = await fetchFileBlob(rec._id);
+    if (blobUrl) {
+      // Update local state with temp URL
+      setRecords(prev => prev.map(r => r._id === rec._id ? { ...r, tempUrl: blobUrl } : r));
+      setPreviewId(rec._id);
+    }
+    setLoading(false);
+  };
+
+  const handleDownload = async (rec) => {
+    let blobUrl = rec.tempUrl;
+
+    // If not cached, fetch it
+    if (!blobUrl) {
+      blobUrl = await fetchFileBlob(rec._id);
+      if (blobUrl) {
+        setRecords(prev => prev.map(r => r._id === rec._id ? { ...r, tempUrl: blobUrl } : r));
+      }
+    }
+
+    if (blobUrl) {
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = rec.fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // Clean up strictly if needed, but keeping for preview might be okay
     }
   };
 
@@ -213,54 +280,23 @@ export default function RecordPage() {
             records.map((rec) => (
               <div key={rec._id} className={styles.recordContainer}>
                 {/* ✅ Preview */}
-                {previewId === rec._id && rec.fileUrl && (
-                  <div className={styles.previewBox}>
-                    {rec.fileType === "pdf" ? (
-                      <iframe
-                        src={rec.fileUrl}
-                        className={styles.previewMedia}
-                        title="PDF Preview"
-                      />
-                    ) : (
-                      <img
-                        src={rec.fileUrl}
-                        alt={rec.fileName}
-                        className={styles.previewMedia}
-                      />
-                    )}
-                    <button
-                      className={styles.fullScreenButton}
-                      onClick={() => {
-                        setFullScreenId(rec._id);
-                        setZoom(1);
-                      }}
-                    >
-                      Full Screen
-                    </button>
-                  </div>
-                )}
-
+                {/* ✅ File Name */}
                 <p className={styles.recordText}>{rec.fileName}</p>
 
                 <div className={styles.recordButtons}>
                   <button
                     className={styles.actionButton}
-                    onClick={() =>
-                      setPreviewId(previewId === rec._id ? null : rec._id)
-                    }
+                    onClick={() => handlePreview(rec)}
                   >
                     <FaEye /> {previewId === rec._id ? "Close Preview" : "Preview"}
                   </button>
 
-                  <a
-                    href={rec.fileUrl}
-                    download={rec.fileName}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
                     className={`${styles.actionButton} ${styles.downloadButton}`}
+                    onClick={() => handleDownload(rec)}
                   >
                     <FaDownload /> Download
-                  </a>
+                  </button>
 
                   <button
                     className={`${styles.actionButton} ${styles.deleteButton}`}
@@ -280,12 +316,45 @@ export default function RecordPage() {
                   </button>
                 </div>
 
+                {previewId === rec._id && (
+                  <div className={styles.previewBox}>
+                    {loading ? (
+                      <p>Loading file...</p>
+                    ) : (
+                      <>
+                        {rec.fileType === "pdf" ? (
+                          <iframe
+                            src={rec.tempUrl}
+                            className={styles.previewMedia}
+                            title="PDF Preview"
+                          />
+                        ) : (
+                          <img
+                            src={rec.tempUrl}
+                            alt={rec.fileName}
+                            className={styles.previewMedia}
+                          />
+                        )}
+                        <button
+                          className={styles.fullScreenButton}
+                          onClick={() => {
+                            setFullScreenId(rec._id);
+                            setZoom(1);
+                          }}
+                        >
+                          Full Screen
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+
                 {/* ✅ Fullscreen */}
                 {fullScreenId === rec._id && (
                   <div className={styles.fullScreenOverlay}>
                     {rec.fileType === "pdf" ? (
                       <iframe
-                        src={rec.fileUrl}
+                        src={rec.tempUrl} // Use Blob URL
                         title="Full PDF"
                         className={styles.fullScreenMedia}
                         style={{
@@ -295,7 +364,7 @@ export default function RecordPage() {
                       />
                     ) : (
                       <img
-                        src={rec.fileUrl}
+                        src={rec.tempUrl} // Use Blob URL
                         alt="Full"
                         className={styles.fullScreenMedia}
                         style={{ transform: `scale(${zoom})` }}

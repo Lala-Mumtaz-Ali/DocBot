@@ -25,7 +25,8 @@ export async function GET(req, { params }) {
         // For privacy, we keep it protected
         await verifyToken(req);
 
-        const { id } = params;
+        // ✅ Fix: Await params before using
+        const { id } = await params;
 
         // Find record by ID
         const record = await Record.findById(id);
