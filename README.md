@@ -115,3 +115,5 @@ Open your browser and navigate to: **[http://localhost:3000/chat](http://localho
 2.  **Retrieval**: MongoDB finds relevant definition documents.
 3.  **Reranking**: BioBERT scores the documents to pick the most relevant ones.
 4.  **Generation**: DeepSeek-R1 (1.5b) writes a helpful answer using those documents.
+
+pip install zain
