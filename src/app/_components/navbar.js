@@ -6,36 +6,33 @@ import {
   FaRobot,
   FaUser,
   FaList,
+  FaInbox,
   FaChartPie,
   FaSignOutAlt,
   FaBars,
   FaTimes,
+  FaChevronDown,
 } from "react-icons/fa";
 import styles from "../style/navbar.module.css";
 
 const Navbar = () => {
   const router = useRouter();
   const pathname = usePathname();
-  const [menuOpen, setMenuOpen] = useState(false);
 
-  const menuItems = [
-    { id: "Profile", icon: <FaUser />, path: "/profile" },
-    { id: "Chatbot", icon: <FaRobot />, path: "/chat" },
-    { id: "Record", icon: <FaList />, path: "/record" },
-    { id: "Record Summary", icon: <FaChartPie />, path: "/" },
-    { id: "Logout", icon: <FaSignOutAlt />, path: "/logout" },
-  ];
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [recordOpen, setRecordOpen] = useState(false);
 
   const handleNavigation = (path) => {
     router.push(path);
-    setMenuOpen(false); // close menu after clicking
+    setMenuOpen(false);
+    setRecordOpen(false);
   };
 
   return (
     <header className={styles.navbar}>
       <div className={styles.navbarBrand}>DocBot</div>
 
-      {/* Hamburger Icon (Mobile) */}
+      {/* Hamburger (Mobile) */}
       <button
         className={styles.hamburger}
         onClick={() => setMenuOpen((prev) => !prev)}
@@ -44,21 +41,93 @@ const Navbar = () => {
         {menuOpen ? <FaTimes /> : <FaBars />}
       </button>
 
-      {/* Navigation Menu */}
-      <nav
-        className={`${styles.navMenu} ${menuOpen ? styles.open : ""}`}
-      >
-        {menuItems.map((item) => (
+      {/* Menu */}
+      <nav className={`${styles.navMenu} ${menuOpen ? styles.open : ""}`}>
+        {/* Profile */}
+        <button
+          onClick={() => handleNavigation("/profile")}
+          className={`${styles.navItem} ${
+            pathname === "/profile" ? styles.active : ""
+          }`}
+        >
+          <FaUser />
+          <span>Profile</span>
+        </button>
+
+        {/* Chatbot */}
+        <button
+          onClick={() => handleNavigation("/chat")}
+          className={`${styles.navItem} ${
+            pathname === "/chat" ? styles.active : ""
+          }`}
+        >
+          <FaRobot />
+          <span>Chatbot</span>
+        </button>
+
+        {/* RECORD DROPDOWN */}
+        <div className={styles.dropdownWrapper}>
           <button
-            key={item.id}
-            onClick={() => handleNavigation(item.path)}
-            className={`${styles.navItem} ${pathname === item.path ? styles.active : ""
-              }`}
+            onClick={() => setRecordOpen((prev) => !prev)}
+            className={`${styles.navItem} ${
+              pathname.startsWith("/record") || pathname === "/inbox"
+                ? styles.active
+                : ""
+            }`}
           >
-            {item.icon}
-            <span>{item.id}</span>
+            <FaList />
+            <span>Record</span>
+            <FaChevronDown
+              className={`${styles.chevron} ${
+                recordOpen ? styles.rotate : ""
+              }`}
+            />
           </button>
-        ))}
+
+          {recordOpen && (
+            <div className={styles.dropdownMenu}>
+              <button
+                onClick={() => handleNavigation("/record")}
+                className={`${styles.dropdownItem} ${
+                  pathname === "/record" ? styles.active : ""
+                }`}
+              >
+                <FaList />
+                Records
+              </button>
+
+              <button
+                onClick={() => handleNavigation("/inbox")}
+                className={`${styles.dropdownItem} ${
+                  pathname === "/inbox" ? styles.active : ""
+                }`}
+              >
+                <FaInbox />
+                Inbox
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Record Summary */}
+        <button
+          onClick={() => handleNavigation("/")}
+          className={`${styles.navItem} ${
+            pathname === "/" ? styles.active : ""
+          }`}
+        >
+          <FaChartPie />
+          <span>Record Summary</span>
+        </button>
+
+        {/* Logout */}
+        <button
+          onClick={() => handleNavigation("/logout")}
+          className={styles.navItem}
+        >
+          <FaSignOutAlt />
+          <span>Logout</span>
+        </button>
       </nav>
     </header>
   );
