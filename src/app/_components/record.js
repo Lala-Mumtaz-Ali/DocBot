@@ -3,9 +3,20 @@
 import React, { useState, useEffect } from "react";
 import styles from "../style/Record.module.css";
 
-import { FaCloudUploadAlt, FaList, FaTrash, FaShare, FaTimes, FaSearchPlus, FaSearchMinus, FaDownload, FaEye } from "react-icons/fa";
+import {
+  FaCloudUploadAlt,
+  FaList,
+  FaTrash,
+  FaShare,
+  FaTimes,
+  FaSearchPlus,
+  FaSearchMinus,
+  FaDownload,
+  FaEye,
+} from "react-icons/fa";
 
 export default function RecordPage() {
+
   const [file, setFile] = useState(null);
   const [records, setRecords] = useState([]);
   const [previewId, setPreviewId] = useState(null);
@@ -20,22 +31,21 @@ export default function RecordPage() {
   const token =
     typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
-  // ✅ Fetch records
+  /* ---------------- Fetch Records ---------------- */
+
   const fetchRecords = async () => {
     try {
       const res = await fetch("/api/records", {
         headers: { Authorization: `Bearer ${token}` },
       });
+
       const data = await res.json();
 
       if (res.ok && data.records) {
-        // ✅ We don't need fileUrl here immediately due to auth issue
         setRecords(data.records);
-      } else {
-        console.error("❌", data.message);
       }
     } catch (err) {
-      console.error("❌ Fetch Error:", err);
+      console.error(err);
     }
   };
 
@@ -46,22 +56,22 @@ export default function RecordPage() {
   useEffect(() => {
     if (activeTab === "view" && token) fetchRecords();
 
-    // ✅ Close preview when switching tabs
     setPreviewId(null);
     setFullScreenId(null);
     setZoom(1);
   }, [activeTab]);
 
-  // ✅ File input
+  /* ---------------- Upload ---------------- */
+
   const handleFileChange = (e) => {
     const selected = e.target.files[0];
     if (!selected) return;
     setFile(selected);
   };
 
-  // ✅ Upload
   const handleUpload = async () => {
-    if (!file) return alert("Please choose a file first!");
+    if (!file) return alert("Choose file first");
+
     setLoading(true);
 
     try {
@@ -75,27 +85,27 @@ export default function RecordPage() {
       });
 
       const data = await res.json();
+
       if (res.ok) {
-        alert("✅ Record uploaded successfully!");
+        alert("Record uploaded successfully");
         setFile(null);
-        // setActiveTab("view"); // Removed
-        await fetchRecords();
+        fetchRecords();
       } else {
-        alert(`❌ ${data.message || "Upload failed"}`);
+        alert(data.message);
       }
     } catch (err) {
-      console.error("❌ Upload Error:", err);
-    } finally {
-      setLoading(false);
+      console.error(err);
     }
+
+    setLoading(false);
   };
 
-  // ✅ Delete (Optimistic UI)
-  const handleDelete = async (id) => {
-    if (!confirm("Are you sure you want to delete this record?")) return;
+  /* ---------------- Delete ---------------- */
 
-    // 1. Optimistic Update: Remove from UI immediately
-    const previousRecords = [...records];
+  const handleDelete = async (id) => {
+    if (!confirm("Delete this record?")) return;
+
+    const previous = [...records];
     setRecords((prev) => prev.filter((r) => r._id !== id));
 
     try {
@@ -108,312 +118,320 @@ export default function RecordPage() {
         body: JSON.stringify({ recordId: id }),
       });
 
-      const data = await res.json();
       if (!res.ok) {
-        // Rollback if failed
-        alert(`❌ ${data.message || "Delete failed"}`);
-        setRecords(previousRecords);
+        setRecords(previous);
       }
     } catch (err) {
-      console.error("❌ Delete Error:", err);
-      alert("❌ Delete failed (Network Error)");
-      setRecords(previousRecords);
+      setRecords(previous);
     }
   };
 
-  // ✅ Authenticated Fetch for Blob
+  /* ---------------- Fetch File ---------------- */
+
   const fetchFileBlob = async (recordId) => {
     try {
       const res = await fetch(`/api/records/${recordId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error("Failed to load file");
+
       const blob = await res.blob();
       return URL.createObjectURL(blob);
-    } catch (err) {
-      console.error("Error fetching file:", err);
-      alert("Error loading file. Please try again.");
+    } catch {
+      alert("File loading error");
       return null;
     }
   };
 
+  /* ---------------- Preview ---------------- */
+
   const handlePreview = async (rec) => {
+
     if (previewId === rec._id) {
       setPreviewId(null);
       return;
     }
 
-    // Check cache first
     if (rec.tempUrl) {
       setPreviewId(rec._id);
       return;
     }
 
     setLoading(true);
+
     const blobUrl = await fetchFileBlob(rec._id);
+
     if (blobUrl) {
-      // Update local state with temp URL
-      setRecords(prev => prev.map(r => r._id === rec._id ? { ...r, tempUrl: blobUrl } : r));
+
+      setRecords((prev) =>
+        prev.map((r) =>
+          r._id === rec._id ? { ...r, tempUrl: blobUrl } : r
+        )
+      );
+
       setPreviewId(rec._id);
     }
+
     setLoading(false);
   };
 
-  const handleDownload = async (rec) => {
-    let blobUrl = rec.tempUrl;
+  /* ---------------- Download ---------------- */
 
-    // If not cached, fetch it
-    if (!blobUrl) {
-      blobUrl = await fetchFileBlob(rec._id);
-      if (blobUrl) {
-        setRecords(prev => prev.map(r => r._id === rec._id ? { ...r, tempUrl: blobUrl } : r));
-      }
+  const handleDownload = async (rec) => {
+
+    let url = rec.tempUrl;
+
+    if (!url) {
+      url = await fetchFileBlob(rec._id);
     }
 
-    if (blobUrl) {
-      const a = document.createElement('a');
-      a.href = blobUrl;
+    if (url) {
+      const a = document.createElement("a");
+      a.href = url;
       a.download = rec.fileName;
       document.body.appendChild(a);
       a.click();
       a.remove();
-      // Clean up strictly if needed, but keeping for preview might be okay
     }
   };
 
-  // ✅ Send record
-  const handleSend = async () => {
-    if (!sendTo || !selectedFileId) {
-      alert("Please enter recipient email or user ID.");
-      return;
+  /* ---------------- Send ---------------- */
+
+ const handleSend = async () => {
+
+  if (!sendTo || !selectedFileId) {
+    alert("Enter recipient email");
+    return;
+  }
+
+  try {
+
+    const res = await fetch("/api/inbox", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      
+      body: JSON.stringify({
+        senderEmail: JSON.parse(localStorage.getItem("user")).email,
+        receiverEmail: sendTo,
+        record: selectedFileId
+      }),
+    });
+
+    const data = await res.json();
+    console.log("SEND RESPONSE:", data);
+
+    if (res.ok) {
+      alert("Record sent successfully");
+      setShowSendPopup(false);
+      setSendTo("");
+    } else {
+      alert(data.message || "Send failed");
     }
 
-    try {
-      const res = await fetch("/api/send-record", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          recordId: selectedFileId,
-          recipient: sendTo,
-        }),
-      });
+  } catch (err) {
+    console.error(err);
+  }
+};
+  /* ---------------- Zoom ---------------- */
 
-      const data = await res.json();
-      if (res.ok) {
-        alert("✅ Record sent successfully!");
-        setShowSendPopup(false);
-        setSendTo("");
-        setSelectedFileId(null);
-      } else {
-        alert(`❌ ${data.message || "Failed to send file"}`);
-      }
-    } catch (err) {
-      console.error("❌ Send Error:", err);
-    }
-  };
-
-  // ✅ Zoom controls
   const zoomIn = () => setZoom((z) => Math.min(z + 0.2, 3));
   const zoomOut = () => setZoom((z) => Math.max(z - 0.2, 0.5));
   const closeFullScreen = () => setFullScreenId(null);
 
+  /* ---------------- UI ---------------- */
+
   return (
     <div className={styles.container}>
+
       <h2 className={styles.pageTitle}>📁 Record Management</h2>
 
       {/* Tabs */}
+
       <div className={styles.tabContainer}>
+
         <button
-          className={`${styles.tabButton} ${activeTab === "view" ? styles.activeTab : ""
-            }`}
+          className={`${styles.tabButton} ${activeTab === "view" ? styles.activeTab : ""}`}
           onClick={() => setActiveTab("view")}
         >
-          <FaList /> View Past Records
+          <FaList /> View Records
         </button>
+
         <button
-          className={`${styles.tabButton} ${activeTab === "add" ? styles.activeTab : ""
-            }`}
+          className={`${styles.tabButton} ${activeTab === "add" ? styles.activeTab : ""}`}
           onClick={() => setActiveTab("add")}
         >
           <FaCloudUploadAlt /> Add Record
         </button>
+
       </div>
 
-      {/* Add Record */}
+      {/* Upload */}
+
       {activeTab === "add" && (
+
         <div className={styles.uploadSection}>
+
           <input
             type="file"
-            className={styles.inputFile}
             onChange={handleFileChange}
+            className={styles.inputFile}
           />
+
           <div className={styles.buttonGroup}>
+
             <button
-              className={`${styles.actionButton} ${styles.uploadButton}`}
               onClick={handleUpload}
               disabled={loading}
+              className={`${styles.actionButton} ${styles.uploadButton}`}
             >
-              <FaCloudUploadAlt /> {loading ? "Uploading..." : "Upload Record"}
+              {loading ? "Uploading..." : "Upload"}
             </button>
+
             <button
+              onClick={() => setActiveTab("view")}
               className={`${styles.actionButton} ${styles.cancelButton}`}
-              onClick={() => {
-                setFile(null);
-                setActiveTab("view");
-              }}
             >
               Cancel
             </button>
+
           </div>
+
         </div>
       )}
 
-      {/* View Records */}
+      {/* Records */}
+
       {activeTab === "view" && (
+
         <div className={styles.recordsList}>
+
           {records.length === 0 ? (
-            <p className={styles.emptyText}>No records found.</p>
+
+            <p className={styles.emptyText}>No records found</p>
+
           ) : (
+
             records.map((rec) => (
+
               <div key={rec._id} className={styles.recordContainer}>
-                {/* ✅ Preview */}
-                {/* ✅ File Name */}
+
                 <p className={styles.recordText}>{rec.fileName}</p>
 
+                {/* Preview */}
+
+                {previewId === rec._id && rec.tempUrl && (
+
+                  <div className={styles.previewBox}>
+
+                    {rec.fileType === "pdf" ? (
+
+                      <iframe
+                        src={rec.tempUrl}
+                        className={styles.previewMedia}
+                      />
+
+                    ) : (
+
+                      <img
+                        src={rec.tempUrl}
+                        alt="preview"
+                        className={styles.previewMedia}
+                      />
+
+                    )}
+
+                  </div>
+
+                )}
+
+                {/* Buttons */}
+
                 <div className={styles.recordButtons}>
+
                   <button
-                    className={styles.actionButton}
                     onClick={() => handlePreview(rec)}
+                    className={`${styles.actionButton} ${styles.downloadButton}`}
                   >
-                    <FaEye /> {previewId === rec._id ? "Close Preview" : "Preview"}
+                    <FaEye /> Preview
                   </button>
 
                   <button
-                    className={`${styles.actionButton} ${styles.downloadButton}`}
                     onClick={() => handleDownload(rec)}
+                    className={`${styles.actionButton} ${styles.downloadButton}`}
                   >
                     <FaDownload /> Download
                   </button>
 
                   <button
-                    className={`${styles.actionButton} ${styles.deleteButton}`}
                     onClick={() => handleDelete(rec._id)}
+                    className={`${styles.actionButton} ${styles.deleteButton}`}
                   >
                     <FaTrash /> Delete
                   </button>
 
                   <button
-                    className={`${styles.actionButton} ${styles.sendButton}`}
                     onClick={() => {
                       setSelectedFileId(rec._id);
                       setShowSendPopup(true);
                     }}
+                    className={`${styles.actionButton} ${styles.sendButton}`}
                   >
                     <FaShare /> Send
                   </button>
+
                 </div>
 
-                {previewId === rec._id && (
-                  <div className={styles.previewBox}>
-                    {loading ? (
-                      <p>Loading file...</p>
-                    ) : (
-                      <>
-                        {rec.fileType === "pdf" ? (
-                          <iframe
-                            src={rec.tempUrl}
-                            className={styles.previewMedia}
-                            title="PDF Preview"
-                          />
-                        ) : (
-                          <img
-                            src={rec.tempUrl}
-                            alt={rec.fileName}
-                            className={styles.previewMedia}
-                          />
-                        )}
-                        <button
-                          className={styles.fullScreenButton}
-                          onClick={() => {
-                            setFullScreenId(rec._id);
-                            setZoom(1);
-                          }}
-                        >
-                          Full Screen
-                        </button>
-                      </>
-                    )}
-                  </div>
-                )}
-
-                {/* ✅ Fullscreen */}
-                {fullScreenId === rec._id && (
-                  <div className={styles.fullScreenOverlay}>
-                    {rec.fileType === "pdf" ? (
-                      <iframe
-                        src={rec.tempUrl} // Use Blob URL
-                        title="Full PDF"
-                        className={styles.fullScreenMedia}
-                        style={{
-                          transform: `scale(${zoom})`,
-                          transformOrigin: "0 0",
-                        }}
-                      />
-                    ) : (
-                      <img
-                        src={rec.tempUrl} // Use Blob URL
-                        alt="Full"
-                        className={styles.fullScreenMedia}
-                        style={{ transform: `scale(${zoom})` }}
-                      />
-                    )}
-                    <div className={styles.zoomControls}>
-                      <button onClick={zoomIn}><FaSearchPlus /></button>
-                      <button onClick={zoomOut}><FaSearchMinus /></button>
-                    </div>
-                    <button
-                      className={styles.closeFullScreen}
-                      onClick={closeFullScreen}
-                    >
-                      <FaTimes />
-                    </button>
-                  </div>
-                )}
               </div>
+
             ))
           )}
+
         </div>
       )}
 
-      {/* Popup */}
+      {/* Send Popup */}
+
       {showSendPopup && (
+
         <div className={styles.popupOverlay}>
+
           <div className={styles.popupBox}>
+
             <h3>Send Record</h3>
+
             <input
               type="text"
-              placeholder="Enter recipient email or user ID"
+              placeholder="Enter email"
               value={sendTo}
               onChange={(e) => setSendTo(e.target.value)}
               className={styles.popupInput}
             />
+
             <div className={styles.popupActions}>
-              <button onClick={handleSend} className={styles.popupButton}>
+
+              <button
+                onClick={handleSend}
+                className={styles.popupButton}
+              >
                 Send
               </button>
+
               <button
                 onClick={() => setShowSendPopup(false)}
                 className={styles.popupCancel}
               >
                 Cancel
               </button>
+
             </div>
+
           </div>
+
         </div>
       )}
+
     </div>
   );
 }
