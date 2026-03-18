@@ -41,3 +41,13 @@ yarn-error.log*
 next-env.d.ts
 
 data/
+
+# ─── Diabetes ML Microservice ───
+# Raw training data (downloaded from Kaggle — do NOT commit)
+diabetes_ml/data/raw/
+diabetes_ml/data/processed/
+# Trained model binary (regenerate with train_model.py)
+diabetes_ml/models/*.pkl
+# Python cache
+diabetes_ml/__pycache__/
+diabetes_ml/*.pyc

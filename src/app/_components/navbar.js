@@ -111,9 +111,9 @@ const Navbar = () => {
 
         {/* Record Summary */}
         <button
-          onClick={() => handleNavigation("/")}
+          onClick={() => handleNavigation("/record-summary")}
           className={`${styles.navItem} ${
-            pathname === "/" ? styles.active : ""
+            pathname === "/record-summary" ? styles.active : ""
           }`}
         >
           <FaChartPie />
