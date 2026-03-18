@@ -15,7 +15,9 @@ import json
 import re
 
 # Load environment variables
-load_dotenv(".env.local")
+# Try loading from the unified Next.js root config first, then fallback to local .env
+load_dotenv("../.env.local")
+load_dotenv()
 
 app = FastAPI()
 
@@ -202,6 +204,56 @@ def chat(request: ChatRequest):
     except Exception as e:
         print(f"ERROR: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/extract_pdf_text")
+async def extract_pdf_text(file: UploadFile = File(...)):
+    """Extract raw text from PDF using PyMuPDF. Scanned PDFs fallback to Vision Model OCR."""
+    try:
+        contents = await file.read()
+        doc = fitz.open(stream=contents, filetype="pdf")
+        
+        extracted_text = ""
+        for page_num, page in enumerate(doc):
+            # Try native text extraction first
+            page_text = page.get_text().strip()
+            
+            # If empty (less than 50 chars usually implies a scanned image page)
+            if len(page_text) < 50:
+                print(f"Page {page_num + 1} appears to be an image. Falling back to Vision OCR...")
+                try:
+                    pix = page.get_pixmap()
+                    img_data = pix.tobytes("png")
+                    img_b64 = base64.b64encode(img_data).decode("utf-8")
+                    
+                    prompt = "Extract and transcribe all visible text, numbers, and tabular data from this medical report image exactly as written. Do not summarize or add markdown formatting."
+                    
+                    response = requests.post(
+                        f"{OLLAMA_BASE_URL}/api/generate",
+                        json={
+                            "model": VISION_MODEL,
+                            "prompt": prompt,
+                            "images": [img_b64],
+                            "stream": False
+                        },
+                        timeout=90
+                    )
+                    
+                    if response.status_code == 200:
+                        page_text = response.json().get("response", "").strip()
+                        print(f"OCR successful for page {page_num + 1}.")
+                    else:
+                        print(f"Vision model OCR failed with status {response.status_code}")
+                except Exception as eval_err:
+                    print(f"Vision model OCR error on page {page_num+1}: {eval_err}")
+            
+            extracted_text += page_text + "\n"
+            
+        doc.close()
+        return {"text": extracted_text.strip()}
+    except Exception as e:
+        print(f"ERROR Extracting PDF Text: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/analyze_report")
 async def analyze_report(file: UploadFile = File(...)):
