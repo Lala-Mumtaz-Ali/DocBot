@@ -127,16 +127,39 @@ export async function POST(req) {
       );
     }
 
+    // --- STRIP INTERPRETATION SECTION ---
+    // Remove the "Interpretation" sections at the bottom of reports to prevent
+    // confusing reference scale numbers from tricking the LLM or Regex.
+    const interpretationRegex = /\b(?:Interpretation|Interprlation|Intepretation)\b/i;
+    const cleanText = rawText.split(interpretationRegex)[0].trim();
+
+    // --- ENHANCED REGEX EXTRACTION FALLBACK ---
+    // Extracting HbA1c and Glucose directly from OCR text using robust patterns to handle typos.
+    let parsedHbA1c = null;
+    const hbRegex = /(?:HbA1c|A1c|Glycated|Glycosylated|HbAIC|HbATc|GL YCOSYLATED)[\s\S]{0,35}?(\d{1,2}\.\d{1,2}|\d{1,2})/i;
+    const hbMatchRaw = cleanText.match(hbRegex);
+    if(hbMatchRaw && hbMatchRaw[1]) {
+        parsedHbA1c = parseFloat(hbMatchRaw[1]);
+        if(parsedHbA1c > 20 || parsedHbA1c < 3) parsedHbA1c = null; // sanity bounds check
+    }
+
+    let parsedGlucose = null;
+    const glRegex = /(?:Glucose|Blood Sugar|Fasting Blood|Average Glucose)[\s\S]{0,30}?(\d{2,3}(?:\.\d{1,2})?)/i;
+    const glMatchRaw = cleanText.match(glRegex);
+    if(glMatchRaw && glMatchRaw[1]) {
+        parsedGlucose = Math.round(parseFloat(glMatchRaw[1]));
+    }
+
     // Truncate text for the LLM to avoid overflowing context window
-    const truncatedText = rawText.slice(0, 3000);
+    const truncatedText = cleanText.slice(0, 3000);
 
     // 3. Build extraction prompt for DeepSeek R1
     const extractionPrompt = `You are a medical data extraction assistant.
 Read the following text from a diabetes lab report and extract EXACTLY these three fields:
 
 1. report_date — the date of the test in YYYY-MM-DD format (string). If not found, use null.
-2. hba1c — HbA1c / glycated hemoglobin percentage as a decimal number (float). If not found, use null.
-3. fasting_glucose — fasting blood glucose in mg/dL as a whole number (integer). If not found, use null.
+2. hba1c — HbA1c percentage (float). We found a potential value: ${parsedHbA1c !== null ? parsedHbA1c : 'None'}
+3. fasting_glucose — fasting/average glucose in mg/dL (integer). We found a potential value: ${parsedGlucose !== null ? parsedGlucose : 'None'}
 
 IMPORTANT RULES:
 - Respond ONLY with a single valid JSON object. No explanation. No extra text.
@@ -165,11 +188,11 @@ JSON output:`;
     // 5. Parse JSON from LLM output (robust)
     const extracted = robustJsonParse(llmResponse);
 
-    // Validate and sanitize types
+    // Validate, sanitize types, and apply robust regex fallback
     const reportData = {
-      report_date:     typeof extracted.report_date === "string"   ? extracted.report_date : null,
-      hba1c:           typeof extracted.hba1c       === "number"   ? extracted.hba1c       : null,
-      fasting_glucose: typeof extracted.fasting_glucose === "number" ? Math.round(extracted.fasting_glucose) : null,
+      report_date:     (typeof extracted.report_date === "string" && extracted.report_date !== "null") ? extracted.report_date : null,
+      hba1c:           typeof extracted.hba1c       === "number"   ? extracted.hba1c       : (parsedHbA1c !== null ? parsedHbA1c : null),
+      fasting_glucose: typeof extracted.fasting_glucose === "number" ? Math.round(extracted.fasting_glucose) : (parsedGlucose !== null ? parsedGlucose : null),
     };
 
     // 6. Save to MongoDB

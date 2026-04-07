@@ -13,6 +13,9 @@ import torch
 import requests
 import json
 import re
+import easyocr
+from PIL import Image
+import numpy as np
 
 # Load environment variables
 # Try loading from the unified Next.js root config first, then fallback to local .env
@@ -48,6 +51,41 @@ ollama = OllamaEmbeddings()
 GEN_MODEL = "deepseek-r1:1.5b"
 VISION_MODEL = "llava" # Or llava-phi3
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
+# ============================
+# OCR INIT
+# ============================
+ocr_reader = easyocr.Reader(['en'], gpu=torch.cuda.is_available())
+
+def group_ocr_text_by_line(ocr_results, y_tolerance=20):
+    """Group OCR results by y-coordinates so that labels and values stay on the same line."""
+    if not ocr_results:
+        return ""
+        
+    items = []
+    for bbox, text, prob in ocr_results:
+        y_center = (bbox[0][1] + bbox[2][1]) / 2
+        x_min = min(bbox[0][0], bbox[3][0])
+        items.append({"text": text, "y": y_center, "x": x_min})
+        
+    items.sort(key=lambda item: (item['y'], item['x']))
+    
+    lines = []
+    current_line = [items[0]]
+    
+    for item in items[1:]:
+        if abs(item['y'] - current_line[0]['y']) <= y_tolerance:
+            current_line.append(item)
+        else:
+            current_line.sort(key=lambda x: x['x'])
+            lines.append("   ".join([x['text'] for x in current_line]))
+            current_line = [item]
+            
+    if current_line:
+        current_line.sort(key=lambda x: x['x'])
+        lines.append("   ".join([x['text'] for x in current_line]))
+        
+    return "\n".join(lines)
 
 class ChatRequest(BaseModel):
     message: str
@@ -219,32 +257,23 @@ async def extract_pdf_text(file: UploadFile = File(...)):
             
             # If empty (less than 50 chars usually implies a scanned image page)
             if len(page_text) < 50:
-                print(f"Page {page_num + 1} appears to be an image. Falling back to Vision OCR...")
+                print(f"Page {page_num + 1} appears to be an image. Falling back to EasyOCR...")
                 try:
-                    pix = page.get_pixmap()
-                    img_data = pix.tobytes("png")
-                    img_b64 = base64.b64encode(img_data).decode("utf-8")
+                    pix = page.get_pixmap(matrix=fitz.Matrix(3, 3))  # 🔥 HIGH QUALITY
+                    img = Image.open(io.BytesIO(pix.tobytes("png")))
+                    ocr_results = ocr_reader.readtext(np.array(img))
+                    page_text = group_ocr_text_by_line(ocr_results)
                     
-                    prompt = "Extract and transcribe all visible text, numbers, and tabular data from this medical report image exactly as written. Do not summarize or add markdown formatting."
-                    
-                    response = requests.post(
-                        f"{OLLAMA_BASE_URL}/api/generate",
-                        json={
-                            "model": VISION_MODEL,
-                            "prompt": prompt,
-                            "images": [img_b64],
-                            "stream": False
-                        },
-                        timeout=90
-                    )
-                    
-                    if response.status_code == 200:
-                        page_text = response.json().get("response", "").strip()
+                    if page_text.strip():
                         print(f"OCR successful for page {page_num + 1}.")
                     else:
-                        print(f"Vision model OCR failed with status {response.status_code}")
+                        print(f"OCR failed to extract any text for page {page_num + 1}.")
                 except Exception as eval_err:
-                    print(f"Vision model OCR error on page {page_num+1}: {eval_err}")
+                    print(f"OCR error on page {page_num+1}: {eval_err}")
+            
+            print(f"\n📝 Extracted Text from Page {page_num + 1} (/extract_pdf_text):")
+            print(page_text)
+            print("-" * 40)
             
             extracted_text += page_text + "\n"
             
@@ -257,89 +286,129 @@ async def extract_pdf_text(file: UploadFile = File(...)):
 
 @app.post("/analyze_report")
 async def analyze_report(file: UploadFile = File(...)):
-    print(f"\n=== NEW REPORT ANALYSIS START (VISION) ===")
-    print(f"File: {file.filename}")
-    
-    try:
-        # 1. Read PDF
-        contents = await file.read()
-        
-        # Open PDF with PyMuPDF
-        doc = fitz.open(stream=contents, filetype="pdf")
-        
-        full_analysis = ""
-        extracted_text_summary = ""
+    print("\n==============================")
+    print("🚀 NEW REPORT ANALYSIS START")
+    print("==============================")
 
-        # Process each page (limit to first 3 pages to avoid timeout)
+    try:
+        contents = await file.read()
+        doc = fitz.open(stream=contents, filetype="pdf")
+
+        full_text = ""
+
         for page_num, page in enumerate(doc):
-            if page_num >= 3: 
-                break
-                
-            print(f"   Processing Page {page_num + 1}...")
-            
-            # --- VISION PART ---
-            # Render page to image
-            pix = page.get_pixmap()
-            img_data = pix.tobytes("png")
-            img_b64 = base64.b64encode(img_data).decode("utf-8")
-            
-            # --- CALL VISION MODEL ---
-            prompt_vision = "Analyze this medical report page. Identify all key statistics, lab values, and abnormalities. Transcribe visible text and format it as a summary."
-            
-            url = f"{OLLAMA_BASE_URL}/api/generate"
-            payload = {
-                "model": VISION_MODEL,
-                "prompt": prompt_vision,
-                "images": [img_b64],
-                "stream": False
-            }
-            
-            print(f"   Action: Sending page image to {VISION_MODEL}...")
-            try:
-                response = requests.post(url, json=payload)
-                if response.status_code != 200:
-                    print(f"   ERROR: Ollama returned {response.status_code}")
-                    print(f"   Response Body: {response.text}")
-                    
-                response.raise_for_status()
-                page_analysis = response.json().get("response", "").strip()
-                full_analysis += f"\n--- Page {page_num + 1} Analysis ---\n{page_analysis}\n"
-            except Exception as e:
-                print(f"   Warning: Vision model failed for page {page_num+1}: {e}")
-                print("   Action: Falling back to text extraction for this page.")
-                page_text = page.get_text()
-                if page_text.strip():
-                     # Send text to DeepSeek instead
-                     prompt_fallback = f"Analyze the following text from a medical report page: \n{page_text}"
-                     try:
-                         fallback_response = requests.post(f"{OLLAMA_BASE_URL}/api/generate", json={"model": GEN_MODEL, "prompt": prompt_fallback, "stream": False})
-                         if fallback_response.status_code == 200:
-                             full_analysis += f"\n--- Page {page_num + 1} (Text Fallback) ---\n{fallback_response.json().get('response', '')}\n"
-                     except:
-                         pass
-                # Fallback to text extraction if vision fails? For now, just continue
-            
-            # Extract raw text for context history
-            extracted_text_summary += page.get_text() + "\n"
+            print(f"\n📄 Processing Page {page_num + 1}")
+
+            # 1️⃣ Normal extraction
+            text = page.get_text("text").strip()
+
+            # 2️⃣ OCR fallback
+            if len(text) < 50:
+                print("⚠️ Using OCR")
+
+                pix = page.get_pixmap(matrix=fitz.Matrix(3, 3))  # 🔥 HIGH QUALITY
+                img = Image.open(io.BytesIO(pix.tobytes("png")))
+
+                ocr_results = ocr_reader.readtext(np.array(img))
+                text = group_ocr_text_by_line(ocr_results)
+
+                if text.strip():
+                    print("✅ OCR Success")
+                else:
+                    print("❌ OCR Failed")
+
+            # Clean text
+            text = re.sub(r'\s+', ' ', text)
+
+            full_text += f"\n--- Page {page_num + 1} ---\n{text}\n"
+
+            print(f"\n📝 Extracted Text from Page {page_num + 1} (/analyze_report):")
+            print(text)
+            print("-" * 40)
 
         doc.close()
 
-        if not full_analysis.strip():
-             return {"reply": "I couldn't analyze the images in this file. Please ensure 'llava' is installed (`ollama pull llava`).", "extracted_text": ""}
+        print("\n📊 FINAL TEXT LENGTH:", len(full_text))
 
-        # 3. Final Synthesis (Optional: Use DeepSeek to summarize the Llava output if it's too long, but raw Llava output is usually good)
-        # We will return the Llava analysis directly.
-        
-        print(f"   Output: Vision analysis complete.")
-        print("=== REPORT ANALYSIS COMPLETE ===\n")
-        
+        # ============================
+        # 🔥 REGEX EXTRACTION (FINAL FIX)
+        # ============================
+
+        # 🔥 Normalize text (fix OCR broken words like "H b A 1 c")
+        normalized_text = re.sub(r'\s+', ' ', full_text)
+        normalized_text = normalized_text.replace("H b A 1 c", "HbA1c")
+        normalized_text = normalized_text.replace("H b A1 c", "HbA1c")
+        normalized_text = normalized_text.replace("H b A 1c", "HbA1c")
+
+        # 🔥 Strong HbA1c regex (handles all formats)
+        hb = re.search(
+            r'(HbA1c|A1c|Glycated Hemoglobin)[^\d]{0,25}([\d]+\.?\d*)',
+            normalized_text,
+            re.IGNORECASE
+        )
+        print("hello how are you" ,hb)
+
+        # 🔥 Glucose regex (slightly improved)
+        glucose = re.search(
+            r'(Glucose|Blood Sugar|Fasting Blood Sugar)[^\d]{0,25}([\d]+\.?\d*)',
+            normalized_text,
+            re.IGNORECASE
+        )
+
+        hb_value = hb.group(2) if hb else None
+        glucose_value = glucose.group(2) if glucose else None
+
+        print("\n🧪 HbA1c:", hb_value)
+        print("🧪 Glucose:", glucose_value)
+
+        # ============================
+        # 🤖 AI EXTRACTION
+        # ============================
+        prompt = f"""
+You are a medical data extractor.
+
+Already extracted:
+- HbA1c: {hb_value}
+- Glucose: {glucose_value}
+
+Extract ONLY JSON:
+- report_date
+- patient_name
+- abnormal_values
+
+Rules:
+- DO NOT guess
+- If missing → null
+- Return ONLY JSON
+
+Text:
+{full_text[:4000]}
+"""
+
+        response = requests.post(
+            f"{OLLAMA_BASE_URL}/api/generate",
+            json={
+                "model": GEN_MODEL,
+                "prompt": prompt,
+                "stream": False
+            },
+            timeout=60
+        )
+
+        ai_output = response.json().get("response", "")
+
+        print("\n🤖 AI OUTPUT:")
+        print(ai_output)
+
         return {
-            "reply": full_analysis,
-            "extracted_text": extracted_text_summary # Still return text for history context
+            "reply": ai_output,
+            "hbA1c": hb_value,
+            "glucose": glucose_value,
+            "extracted_text": full_text
         }
 
     except Exception as e:
-        print(f"ERROR Analyzing Report: {e}")
+        print("\n❌ ERROR:", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
