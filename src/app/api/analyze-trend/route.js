@@ -55,9 +55,10 @@ export async function POST(req) {
 
     // ── 1. Fetch all reports for this user from MongoDB ──
     await connectDB();
-    const reports = await PatientReport.find({ userId })
-      .sort({ report_date: 1 }) // ascending = chronological
-      .lean();
+    let reports = await PatientReport.find({ userId }).lean();
+
+    // Sort chronologically using JS native Date parsing to handle mixed formatting (MM/DD/YYYY vs YYYY-MM-DD)
+    reports.sort((a, b) => new Date(a.report_date) - new Date(b.report_date));
 
     if (reports.length === 0) {
       return NextResponse.json(
@@ -121,21 +122,21 @@ export async function POST(req) {
     const latestReport = reports[reports.length - 1];
     const prevReport   = reports[reports.length - 2];
 
-    const synthesisPrompt = `You are DOCBOT, a caring and empathetic medical assistant chatbot. Your job is to explain a patient's diabetes trend clearly in plain English.
+    const synthesisPrompt = `You are DOCBOT, an advanced prognostic medical AI. Your job is to forecast and predict a patient's future diabetes trajectory based on our Machine Learning pipeline's assessment of their current trends.
 
 Patient Data Summary:
 ${trendTable}
 
-Risk Score: ${riskScore} (${riskLabel}) ${riskEmoji}
-${mlFeatures.hba1c_delta != null ? `HbA1c Change: ${mlFeatures.hba1c_delta > 0 ? "+" : ""}${mlFeatures.hba1c_delta} over ${mlFeatures.days_since_last_test} days` : ""}
+**FUTURE PROGNOSIS SCORE**: ${riskScore} (${riskLabel}) ${riskEmoji}
+${mlFeatures.hba1c_delta != null ? `(Based on HbA1c Change: ${mlFeatures.hba1c_delta > 0 ? "+" : ""}${mlFeatures.hba1c_delta} over ${mlFeatures.days_since_last_test} days)` : ""}
 
 Instructions:
 1. Start with a warm, empathetic greeting as DOCBOT.
-2. Briefly summarize the overall trend in HbA1c levels across the reports shown above.
-3. Explain what the Risk Score of ${riskScore} (${riskLabel}) means in simple, patient-friendly language. Do NOT use medical jargon.
-4. Point out any notable change between the last two readings (${prevReport.report_date} and ${latestReport.report_date}).
-5. End with encouragement and a clear reminder to consult their doctor for professional advice. 
-6. DO NOT diagnose. DO NOT prescribe. Just explain and encourage.
+2. Explicitly explain to the patient that based on their historical trend, their **predicted future state next month/visit** is: ${riskLabel}.
+3. Explain WHY you predict this future state. (e.g. "Because your HbA1c increased by X over the last Y days, I expect your numbers to...").
+4. Tell the patient exactly how their results will likely look in 1-3 months time if this trajectory holds.
+5. End with encouragement and a clear reminder to consult their doctor to alter or maintain this expected future.
+6. DO NOT diagnose medically, but DO explain your future prediction confidently.
 7. Keep the response under 200 words. Be concise and friendly.
 
 DOCBOT response:`;

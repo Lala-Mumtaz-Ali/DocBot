@@ -23,53 +23,18 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, accuracy_score
 
 # ─────────────────────────────────────────────────────────────
-# 1. DOWNLOAD DATASET FROM KAGGLE
+# 1. LOAD LOCAL FHIR DATASET
 # ─────────────────────────────────────────────────────────────
-print("📥 Downloading dataset from Kaggle...")
+print("📥 Loading generated FHIR dataset...")
 
-try:
-    # dataset_download() returns a local path to the downloaded folder
-    dataset_path = kagglehub.dataset_download(
-        "programmer3/smart-sensor-based-diabetes-monitoring"
-    )
-    print(f"✅ Dataset downloaded to: {dataset_path}")
-except Exception as e:
-    print(f"❌ Kaggle download failed: {e}")
-    print("   Make sure ~/.kaggle/kaggle.json contains a valid API key.")
+csv_path = "data/raw/diabetes_raw_fhir.csv"
+if not os.path.exists(csv_path):
+    print(f"❌ Error: {csv_path} not found. Please run ingest_fhir.py first.")
     sys.exit(1)
 
-# Find all CSV files in the downloaded folder
-csv_files = glob.glob(os.path.join(dataset_path, "**", "*.csv"), recursive=True)
-if not csv_files:
-    print(f"❌ No CSV files found in {dataset_path}. Files present:")
-    for f in glob.glob(os.path.join(dataset_path, "**", "*"), recursive=True):
-        print(f"   {f}")
-    sys.exit(1)
-
-print(f"   Found CSV files: {[os.path.basename(f) for f in csv_files]}")
-
-# Load and concatenate all CSVs
-dfs = []
-for csv_path in csv_files:
-    try:
-        tmp = pd.read_csv(csv_path)
-        print(f"   Loaded: {os.path.basename(csv_path)} → {tmp.shape[0]} rows, {tmp.shape[1]} cols")
-        dfs.append(tmp)
-    except Exception as e:
-        print(f"   ⚠️  Skipping {csv_path}: {e}")
-
-if not dfs:
-    print("❌ Could not read any CSV files.")
-    sys.exit(1)
-
-df = pd.concat(dfs, ignore_index=True)
+df = pd.read_csv(csv_path)
 print(f"\n✅ Combined dataset: {df.shape[0]} rows, {df.shape[1]} columns")
 print(f"   Columns: {list(df.columns)}")
-
-# Save raw data
-os.makedirs("data/raw", exist_ok=True)
-df.to_csv("data/raw/diabetes_raw.csv", index=False)
-print("   Raw data saved to data/raw/diabetes_raw.csv")
 
 # ─────────────────────────────────────────────────────────────
 # 2. COLUMN MAPPING
@@ -188,6 +153,11 @@ df_clean["hba1c_delta"]         = df_clean["hba1c_delta"].fillna(0.0)
 df_clean["days_since_last_test"] = df_clean["days_since_last_test"].fillna(90.0)
 df_clean["velocity"]            = df_clean["velocity"].fillna(0.0)
 
+# Shift the risk_label backward to create the predictive target "next_risk"
+df_clean["next_risk"] = df_clean.groupby("patient_id")["risk_label"].shift(-1)
+df_clean = df_clean.dropna(subset=["next_risk"]).copy()
+df_clean["next_risk"] = df_clean["next_risk"].astype(int)
+
 # Save processed features
 os.makedirs("data/processed", exist_ok=True)
 df_clean.to_csv("data/processed/features.csv", index=False)
@@ -197,12 +167,12 @@ print(f"   Processed features saved to data/processed/features.csv")
 # 6. TRAIN XGBoost
 # ─────────────────────────────────────────────────────────────
 FEATURE_COLS = ["hba1c", "fasting_glucose", "hba1c_delta", "days_since_last_test", "velocity"]
-TARGET_COL   = "risk_label"
+TARGET_COL   = "next_risk"
 
 X = df_clean[FEATURE_COLS]
 y = df_clean[TARGET_COL]
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42, stratify=y)
 
 print(f"\n🏋️  Training XGBoost on {len(X_train)} samples...")
 model = XGBClassifier(
@@ -222,7 +192,7 @@ y_pred = model.predict(X_test)
 acc = accuracy_score(y_test, y_pred)
 print(f"\n📈 Test Accuracy: {acc:.4f}")
 print("\nClassification Report:")
-print(classification_report(y_test, y_pred, target_names=["Stable", "Moderate", "Rapid Deterioration"]))
+print(classification_report(y_test, y_pred))
 
 # ─────────────────────────────────────────────────────────────
 # 8. SAVE MODEL
