@@ -1,81 +1,76 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import Navbar from '../_components/navbar'
+import Navbar from '../_components/Navbar'
 import ReactMarkdown from 'react-markdown'
 import styles from '../style/recordSummary.module.css'
 
 // ─────────────────────────────────────────────────────────────
-// CONSTANTS
-// ─────────────────────────────────────────────────────────────
-const STEPS = ['Upload PDFs', 'Extract Data', 'Trend Analysis']
-
-const RISK_CONFIG = {
-  0: { label: 'Stable',               emoji: '🟢', cls: styles.stable,   desc: 'Your readings are within a healthy range. Keep up the great work!' },
-  1: { label: 'Moderate Risk',        emoji: '🟡', cls: styles.moderate, desc: 'There are signs of rising risk. Some lifestyle changes may help.' },
-  2: { label: 'Rapid Deterioration',  emoji: '🔴', cls: styles.rapid,    desc: 'Your readings show a concerning upward trend. Please consult your doctor soon.' },
-}
-
-// ─────────────────────────────────────────────────────────────
-// SVG TREND CHART
+// CHART COMPONENT
 // ─────────────────────────────────────────────────────────────
 function TrendChart({ reports }) {
   if (!reports || reports.length < 2) return null
 
-  const values = reports.map(r => r.hba1c).filter(v => v != null)
-  if (values.length < 2) return null
+  // Sort by date chronologically
+  const sorted = [...reports].sort((a, b) => new Date(a.report_date) - new Date(b.report_date))
+  const data = sorted.map(r => ({
+    date: r.report_date,
+    val: r.hba1c ?? null
+  }))
 
-  const W = 700, H = 140, PAD = 30
-  const minV = Math.min(...values) - 0.5
-  const maxV = Math.max(...values) + 0.5
+  const validData = data.filter(d => d.val !== null)
+  if (validData.length < 2) return <div style={{color:'#64748b'}}>Not enough HbA1c data points for chart.</div>
 
-  const px = (i) => PAD + (i / (values.length - 1)) * (W - PAD * 2)
-  const py = (v) => H - PAD - ((v - minV) / (maxV - minV)) * (H - PAD * 2)
-
-  const linePath = values.map((v, i) => `${i === 0 ? 'M' : 'L'}${px(i)},${py(v)}`).join(' ')
-  const areaPath = `${linePath} L${px(values.length - 1)},${H - PAD} L${px(0)},${H - PAD} Z`
+  const minVal = Math.min(...validData.map(d => d.val))
+  const maxVal = Math.max(...validData.map(d => d.val))
+  const range = maxVal - minVal || 1
+  const padding = range * 0.2
+  const yMin = Math.max(0, minVal - padding)
+  const yMax = maxVal + padding
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className={styles.chart}>
-      <defs>
-        <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%"   stopColor="#38bdf8" stopOpacity="0.35" />
-          <stop offset="100%" stopColor="#38bdf8" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-
-      {/* Grid lines */}
-      {[0, 0.25, 0.5, 0.75, 1].map((t, i) => {
-        const y = H - PAD - t * (H - PAD * 2)
-        const val = (minV + t * (maxV - minV)).toFixed(1)
-        return (
-          <g key={i}>
-            <line x1={PAD} y1={y} x2={W - PAD} y2={y} stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
-            <text x={PAD - 6} y={y + 4} fontSize="10" fill="#475569" textAnchor="end">{val}</text>
-          </g>
-        )
-      })}
-
-      {/* Area fill */}
-      <path d={areaPath} fill="url(#chartGrad)" />
-
-      {/* Line */}
-      <path d={linePath} stroke="#38bdf8" strokeWidth="2.5" fill="none" strokeLinejoin="round" strokeLinecap="round" />
-
-      {/* Data points */}
-      {values.map((v, i) => (
-        <g key={i}>
-          <circle cx={px(i)} cy={py(v)} r="5" fill="#0d1b35" stroke="#38bdf8" strokeWidth="2" />
-          <text x={px(i)} y={py(v) - 10} fontSize="10" fill="#7dd3fc" textAnchor="middle">{v.toFixed(1)}</text>
-          <text x={px(i)} y={H - 8} fontSize="9" fill="#475569" textAnchor="middle"
-            transform={`rotate(-30, ${px(i)}, ${H - 8})`}>
-            {reports[i]?.report_date?.slice(5) ?? ''} {/* MM-DD */}
-          </text>
-        </g>
-      ))}
-    </svg>
+    <div className={styles.chart}>
+      <svg width="100%" height="100%" preserveAspectRatio="none" viewBox="0 0 100 100">
+        {/* Threshold line at 6.5% (Diabetes cutoff) */}
+        {yMax > 6.5 && yMin < 6.5 && (
+          <line
+            x1="0" y1={100 - ((6.5 - yMin) / (yMax - yMin)) * 100}
+            x2="100" y2={100 - ((6.5 - yMin) / (yMax - yMin)) * 100}
+            stroke="#f87171" strokeWidth="0.5" strokeDasharray="2,2" opacity="0.6"
+          />
+        )}
+        <polyline
+          fill="none"
+          stroke="#38bdf8"
+          strokeWidth="2.5"
+          points={validData.map((d, i) => {
+            const x = (i / (validData.length - 1)) * 100
+            const y = 100 - ((d.val - yMin) / (yMax - yMin)) * 100
+            return `${x},${y}`
+          }).join(' ')}
+        />
+        {validData.map((d, i) => {
+          const x = (i / (validData.length - 1)) * 100
+          const y = 100 - ((d.val - yMin) / (yMax - yMin)) * 100
+          return (
+            <g key={i}>
+              <circle cx={x} cy={y} r="2.5" fill="#0d1b35" stroke="#38bdf8" strokeWidth="1" />
+              <text x={x} y={y - 5} fill="#94a3b8" fontSize="4" textAnchor="middle">
+                {d.val}%
+              </text>
+            </g>
+          )
+        })}
+      </svg>
+    </div>
   )
+}
+
+const RISK_CONFIG = {
+  0: { label: "Stable", desc: "Your metrics are generally within healthy or stable limits.", emoji: "🟢", cls: styles.stable },
+  1: { label: "Moderate Risk", desc: "Your metrics show some deterioration. Monitoring advised.", emoji: "🟡", cls: styles.moderate },
+  2: { label: "Rapid Deterioration", desc: "Your metrics are rapidly worsening. Please consult your doctor.", emoji: "🔴", cls: styles.rapid },
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -85,18 +80,71 @@ export default function RecordSummaryPage() {
   const router = useRouter()
   const fileInputRef = useRef(null)
 
-  // Step: 0 = upload, 1 = extracting, 2 = results
-  const [step, setStep] = useState(0)
-  const [isDragging, setIsDragging] = useState(false)
+  // Auth & Init State
+  const [user, setUser] = useState(null)
+  const [initialLoading, setInitialLoading] = useState(true)
 
-  // Selected files with status
+  // Tabs: 'summary' or 'upload'
+  const [activeTab, setActiveTab] = useState('summary')
+
+  // History State
+  const [historyResult, setHistoryResult] = useState(null)
+  const [historyLoading, setHistoryLoading] = useState(false)
+
+  // Upload State
+  const [step, setStep] = useState(0) // 0 = upload, 1 = extracting
+  const [isDragging, setIsDragging] = useState(false)
   const [files, setFiles] = useState([])
-  // Extracted biomarker rows (one per file)
   const [extracted, setExtracted] = useState([])
-  // Final analysis result
-  const [result, setResult] = useState(null)
-  const [analysisLoading, setAnalysisLoading] = useState(false)
   const [error, setError] = useState('')
+
+  // ── Fetch user & history on mount ──
+  useEffect(() => {
+    const fetchHistory = async (userId) => {
+      setHistoryLoading(true)
+      try {
+        const res = await fetch('/api/analyze-trend', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId }),
+        })
+        
+        if (res.status === 404) {
+          // No reports found, force them to upload tab
+          setHistoryResult(null)
+          setActiveTab('upload')
+        } else if (res.ok) {
+          const data = await res.json()
+          setHistoryResult(data)
+          setActiveTab('summary')
+        } else {
+           throw new Error('Failed to load history')
+        }
+      } catch (err) {
+        console.error(err)
+      } finally {
+        setHistoryLoading(false)
+        setInitialLoading(false)
+      }
+    }
+
+    const userData = localStorage.getItem('user')
+    if (userData) {
+      try {
+        const parsed = JSON.parse(userData)
+        setUser(parsed)
+        fetchHistory(parsed.email)
+      } catch(e) {
+        console.error("Invalid user data")
+        router.push('/signin')
+      }
+    } else {
+      router.push('/signin')
+    }
+  }, [router])
+
+  // ── Dynamic File Requirement ──
+  const minRequiredFiles = historyResult && historyResult.reports?.length > 0 ? 1 : 2;
 
   // ── Add files (dedup by name) ──
   const addFiles = useCallback((incoming) => {
@@ -131,8 +179,8 @@ export default function RecordSummaryPage() {
 
   // ── Extract all PDFs sequentially ──
   const handleExtract = async () => {
-    if (files.length === 0) {
-      setError('Please add at least one PDF file.')
+    if (files.length < minRequiredFiles) {
+      setError(`Please add at least ${minRequiredFiles} PDF file${minRequiredFiles > 1 ? 's' : ''}.`)
       return
     }
     setError('')
@@ -148,6 +196,7 @@ export default function RecordSummaryPage() {
       try {
         const fd = new FormData()
         fd.append('file', files[i].file)
+        fd.append('userId', user.email) // Send actual user ID!
 
         const res = await fetch('/api/extract-report', { method: 'POST', body: fd })
         const data = await res.json()
@@ -166,50 +215,60 @@ export default function RecordSummaryPage() {
       }
     }
 
-    // Check we got at least 2 valid extractions
+    // Check we got enough valid extractions
     const valid = results.filter(Boolean)
-    if (valid.length < 2) {
-      setError('At least 2 reports must be successfully extracted to compute a trend. Please add more PDFs.')
+    if (valid.length < minRequiredFiles) {
+      setError(`At least ${minRequiredFiles} report${minRequiredFiles > 1 ? 's' : ''} must be successfully extracted to proceed.`)
+      return
     }
-  }
 
-  // ── Generate trend analysis ──
-  const handleAnalyze = async () => {
-    setAnalysisLoading(true)
-    setError('')
-
+    // Extraction done successfully! 
+    // Now trigger an automatic re-fetch of the trend analysis.
     try {
       const res = await fetch('/api/analyze-trend', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: 'demo_user' }),
+        body: JSON.stringify({ userId: user.email }),
       })
       const data = await res.json()
-
-      if (!res.ok) throw new Error(data.error || 'Analysis failed')
-
-      setResult(data)
-      setStep(2)
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setAnalysisLoading(false)
+      if (res.ok) {
+        setHistoryResult(data)
+        // Reset upload state and switch back to summary
+        setStep(0)
+        setFiles([])
+        setExtracted([])
+        setActiveTab('summary')
+      } else {
+        throw new Error(data.error || 'Trend analysis failed')
+      }
+    } catch(err) {
+      setError(`Extraction succeeded, but trend update failed: ${err.message}`)
     }
   }
 
-  // ── Reset ──
-  const handleReset = () => {
+  // ── Reset Upload State ──
+  const handleResetUpload = () => {
     setStep(0)
     setFiles([])
     setExtracted([])
-    setResult(null)
     setError('')
-    setAnalysisLoading(false)
   }
 
   const validExtracted = extracted.filter(Boolean)
   const allDone = files.length > 0 && files.every(f => f.status === 'done' || f.status === 'error')
-  const riskCfg = result ? (RISK_CONFIG[result.risk_score] ?? RISK_CONFIG[0]) : null
+  const riskCfg = historyResult ? (RISK_CONFIG[historyResult.risk_score] ?? RISK_CONFIG[0]) : null
+
+  if (initialLoading) {
+    return (
+      <div className={styles.page}>
+        <Navbar />
+        <div style={{ textAlign: 'center', marginTop: '10rem', color: '#94a3b8' }}>
+          <div className={styles.spinner} style={{ width: '2rem', height: '2rem', borderWidth: '3px' }}></div>
+          <p style={{ marginTop: '1rem' }}>Loading your records...</p>
+        </div>
+      </div>
+    )
+  }
 
   // ─────────────────────────────────────────────────────────────
   // RENDER
@@ -227,152 +286,30 @@ export default function RecordSummaryPage() {
         </p>
       </div>
 
-      {/* Step Tracker */}
-      <div className={styles.stepper}>
-        {STEPS.map((label, i) => (
-          <div
-            key={i}
-            className={`${styles.step} ${i === step ? styles.active : ''} ${i < step ? styles.done : ''}`}
-          >
-            <div className={styles.stepDot}>{i < step ? '✓' : i + 1}</div>
-            <span className={styles.stepLabel}>{label}</span>
-          </div>
-        ))}
+      {/* Tabs Menu */}
+      <div className={styles.tabsMenu}>
+        <button 
+           className={`${styles.tabBtn} ${activeTab === 'summary' ? styles.activeTab : ''}`}
+           onClick={() => setActiveTab('summary')}
+           disabled={!historyResult} 
+           title={!historyResult ? "Upload at least 2 reports first" : ""}
+        >
+          Summary & Trend
+        </button>
+        <button 
+           className={`${styles.tabBtn} ${activeTab === 'upload' ? styles.activeTab : ''}`}
+           onClick={() => setActiveTab('upload')}
+        >
+          Upload Reports
+        </button>
       </div>
 
-      {/* ─── STEP 0: UPLOAD ─── */}
-      {step === 0 && (
-        <div className={styles.card}>
-          <div className={styles.sectionHeader}>
-            <h2 className={styles.cardTitle}>Upload Lab Reports</h2>
-          </div>
-
-          {/* Drop zone */}
-          <div
-            className={`${styles.uploadZone} ${isDragging ? styles.dragging : ''}`}
-            onClick={() => fileInputRef.current?.click()}
-            onDrop={onDrop}
-            onDragOver={onDragOver}
-            onDragLeave={onDragLeave}
-          >
-            <span className={styles.uploadIcon}>📄</span>
-            <p className={styles.uploadTitle}>Drag & drop PDFs here, or click to browse</p>
-            <p className={styles.uploadHint}>Accepts PDF files only • Upload 2 or more reports for trend analysis</p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf"
-              multiple
-              className={styles.uploadInput}
-              onChange={e => addFiles(e.target.files)}
-            />
-          </div>
-
-          {/* File list */}
-          {files.length > 0 && (
-            <div className={styles.fileList}>
-              {files.map((f, idx) => (
-                <div key={idx} className={styles.fileItem}>
-                  <span className={styles.fileIcon}>📑</span>
-                  <span className={styles.fileName}>{f.file.name}</span>
-                  <span className={`${styles.fileStatus} ${styles.statusPending}`}>Ready</span>
-                  <button className={styles.removeBtn} onClick={() => removeFile(idx)} title="Remove">✕</button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {error && <div className={styles.errorBox}>⚠️ {error}</div>}
-
-          <button
-            className={styles.btnPrimary}
-            onClick={handleExtract}
-            disabled={files.length < 1}
-          >
-            Extract Biomarkers →
-          </button>
-        </div>
-      )}
-
-      {/* ─── STEP 1: EXTRACTING ─── */}
-      {step === 1 && (
-        <div className={styles.card}>
-          <div className={styles.sectionHeader}>
-            <h2 className={styles.cardTitle}>Extracting Biomarkers</h2>
-            <button className={styles.btnSecondary} onClick={handleReset}>← Start Over</button>
-          </div>
-
-          <div className={styles.fileList}>
-            {files.map((f, idx) => (
-              <div key={idx} className={styles.fileItem}>
-                <span className={styles.fileIcon}>📑</span>
-                <span className={styles.fileName}>{f.file.name}</span>
-                <span className={`${styles.fileStatus} ${
-                  f.status === 'loading' ? styles.statusLoading :
-                  f.status === 'done'    ? styles.statusDone    :
-                  f.status === 'error'   ? styles.statusError   :
-                  styles.statusPending
-                }`}>
-                  {f.status === 'loading' && <><span className={styles.spinner}></span> Extracting…</>}
-                  {f.status === 'done'    && '✓ Done'}
-                  {f.status === 'error'   && '✕ Failed'}
-                  {f.status === 'pending' && 'Waiting…'}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          {/* Extracted biomarker preview table */}
-          {validExtracted.length > 0 && (
-            <div className={styles.extractedData}>
-              <p className={styles.extractedTitle}>Extracted Biomarkers</p>
-              <table className={styles.dataTable}>
-                <thead>
-                  <tr>
-                    <th>File</th>
-                    <th>Report Date</th>
-                    <th>HbA1c (%)</th>
-                    <th>Fasting Glucose (mg/dL)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {files.map((f, idx) =>
-                    f.extracted ? (
-                      <tr key={idx}>
-                        <td>{f.file.name.slice(0, 20)}{f.file.name.length > 20 ? '…' : ''}</td>
-                        <td>{f.extracted.report_date ?? <span className={styles.nullCell}>Not found</span>}</td>
-                        <td>{f.extracted.hba1c      ?? <span className={styles.nullCell}>Not found</span>}</td>
-                        <td>{f.extracted.fasting_glucose ?? <span className={styles.nullCell}>Not found</span>}</td>
-                      </tr>
-                    ) : null
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {error && <div className={styles.errorBox}>⚠️ {error}</div>}
-
-          {allDone && (
-            <button
-              className={styles.btnPrimary}
-              onClick={handleAnalyze}
-              disabled={analysisLoading || validExtracted.length < 2}
-            >
-              {analysisLoading
-                ? <><span className={styles.spinner}></span> Analyzing with DOCBOT…</>
-                : 'Generate Trend Analysis →'}
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* ─── STEP 2: RESULTS ─── */}
-      {step === 2 && result && (
+      {/* ─── TAB: RECORD SUMMARY ─── */}
+      {activeTab === 'summary' && historyResult && (
         <div className={styles.card}>
           <div className={styles.sectionHeader}>
             <h2 className={styles.cardTitle}>Your Trend Report</h2>
-            <button className={styles.btnSecondary} onClick={handleReset}>+ Analyze More</button>
+            <button className={styles.btnSecondary} onClick={() => setActiveTab('upload')}>+ Add New Report</button>
           </div>
 
           {/* Risk Badge */}
@@ -387,15 +324,15 @@ export default function RecordSummaryPage() {
           )}
 
           {/* HbA1c trend chart */}
-          {result.reports?.length >= 2 && (
+          {historyResult.reports?.length >= 2 && (
             <div className={styles.chartWrapper}>
               <p className={styles.chartTitle}>HbA1c Trend (%) Over Time</p>
-              <TrendChart reports={result.reports} />
+              <TrendChart reports={historyResult.reports} />
             </div>
           )}
 
           {/* Data table */}
-          {result.reports?.length > 0 && (
+          {historyResult.reports?.length > 0 && (
             <div className={styles.extractedData}>
               <p className={styles.extractedTitle}>Report History</p>
               <table className={styles.dataTable}>
@@ -408,7 +345,7 @@ export default function RecordSummaryPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {result.reports.map((r, i) => (
+                  {historyResult.reports.map((r, i) => (
                     <tr key={i}>
                       <td>{r.report_date ?? '—'}</td>
                       <td>{r.hba1c      ?? <span className={styles.nullCell}>N/A</span>}</td>
@@ -422,17 +359,164 @@ export default function RecordSummaryPage() {
           )}
 
           {/* DOCBOT analysis */}
-          {result.analysis && (
+          {historyResult.analysis && (
             <div style={{ marginTop: '1.5rem' }}>
               <p className={styles.chartTitle}>🤖 DOCBOT Analysis</p>
               <div className={styles.analysisBox}>
-                <ReactMarkdown>{result.analysis}</ReactMarkdown>
+                <ReactMarkdown>{historyResult.analysis}</ReactMarkdown>
               </div>
             </div>
           )}
-
-          {error && <div className={styles.errorBox}>⚠️ {error}</div>}
         </div>
+      )}
+
+      {/* ─── TAB: UPLOAD REPORTS ─── */}
+      {activeTab === 'upload' && (
+        <>
+          {/* Step Tracker (Only visible during upload) */}
+          <div className={styles.stepper}>
+            <div className={`${styles.step} ${step === 0 ? styles.active : ''} ${step > 0 ? styles.done : ''}`}>
+              <div className={styles.stepDot}>{step > 0 ? '✓' : '1'}</div>
+              <span className={styles.stepLabel}>Upload</span>
+            </div>
+            <div className={`${styles.step} ${step === 1 ? styles.active : ''}`}>
+              <div className={styles.stepDot}>2</div>
+              <span className={styles.stepLabel}>Extracting</span>
+            </div>
+          </div>
+
+          {/* UPLOAD VIEW */}
+          {step === 0 && (
+            <div className={styles.card}>
+              <div className={styles.sectionHeader}>
+                <h2 className={styles.cardTitle}>Upload Lab Reports</h2>
+              </div>
+
+              {/* Dynamic instruction based on history */}
+              {!historyResult && (
+                <div style={{ marginBottom: '1.5rem', padding: '1rem', background: 'rgba(56,189,248,0.1)', borderRadius: '0.5rem', color: '#7dd3fc', fontSize: '0.9rem' }}>
+                  👋 <strong>Welcome!</strong> We noticed you don't have any past reports in our system. Please upload <strong>at least 2 reports</strong> below to establish your initial trend baseline.
+                </div>
+              )}
+
+              {/* Drop zone */}
+              <div
+                className={`${styles.uploadZone} ${isDragging ? styles.dragging : ''}`}
+                onClick={() => fileInputRef.current?.click()}
+                onDrop={onDrop}
+                onDragOver={onDragOver}
+                onDragLeave={onDragLeave}
+              >
+                <span className={styles.uploadIcon}>📄</span>
+                <p className={styles.uploadTitle}>Drag & drop PDFs here, or click to browse</p>
+                <p className={styles.uploadHint}>
+                  Accepts PDF files only • Minimum {minRequiredFiles} report{minRequiredFiles > 1 ? 's' : ''} required
+                </p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf"
+                  multiple
+                  className={styles.uploadInput}
+                  onChange={e => addFiles(e.target.files)}
+                />
+              </div>
+
+              {/* File list */}
+              {files.length > 0 && (
+                <div className={styles.fileList}>
+                  {files.map((f, idx) => (
+                    <div key={idx} className={styles.fileItem}>
+                      <span className={styles.fileIcon}>📑</span>
+                      <span className={styles.fileName}>{f.file.name}</span>
+                      <span className={`${styles.fileStatus} ${styles.statusPending}`}>Ready</span>
+                      <button className={styles.removeBtn} onClick={() => removeFile(idx)} title="Remove">✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {error && <div className={styles.errorBox}>⚠️ {error}</div>}
+
+              <button
+                className={styles.btnPrimary}
+                onClick={handleExtract}
+                disabled={files.length < minRequiredFiles}
+              >
+                Extract Biomarkers & Update Trend →
+              </button>
+            </div>
+          )}
+
+          {/* EXTRACTING VIEW */}
+          {step === 1 && (
+            <div className={styles.card}>
+              <div className={styles.sectionHeader}>
+                <h2 className={styles.cardTitle}>Extracting Biomarkers</h2>
+                <button className={styles.btnSecondary} onClick={handleResetUpload}>← Stop & Reset</button>
+              </div>
+
+              <div className={styles.fileList}>
+                {files.map((f, idx) => (
+                  <div key={idx} className={styles.fileItem}>
+                    <span className={styles.fileIcon}>📑</span>
+                    <span className={styles.fileName}>{f.file.name}</span>
+                    <span className={`${styles.fileStatus} ${
+                      f.status === 'loading' ? styles.statusLoading :
+                      f.status === 'done'    ? styles.statusDone    :
+                      f.status === 'error'   ? styles.statusError   :
+                      styles.statusPending
+                    }`}>
+                      {f.status === 'loading' && <><span className={styles.spinner}></span> Extracting…</>}
+                      {f.status === 'done'    && '✓ Done'}
+                      {f.status === 'error'   && '✕ Failed'}
+                      {f.status === 'pending' && 'Waiting…'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Extracted biomarker preview table */}
+              {validExtracted.length > 0 && (
+                <div className={styles.extractedData}>
+                  <p className={styles.extractedTitle}>Extracted Results</p>
+                  <table className={styles.dataTable}>
+                    <thead>
+                      <tr>
+                        <th>File</th>
+                        <th>Report Date</th>
+                        <th>HbA1c (%)</th>
+                        <th>Fasting Glucose (mg/dL)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {files.map((f, idx) =>
+                        f.extracted ? (
+                          <tr key={idx}>
+                            <td>{f.file.name.slice(0, 20)}{f.file.name.length > 20 ? '…' : ''}</td>
+                            <td>{f.extracted.report_date ?? <span className={styles.nullCell}>Not found</span>}</td>
+                            <td>{f.extracted.hba1c      ?? <span className={styles.nullCell}>Not found</span>}</td>
+                            <td>{f.extracted.fasting_glucose ?? <span className={styles.nullCell}>Not found</span>}</td>
+                          </tr>
+                        ) : null
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {error && <div className={styles.errorBox}>⚠️ {error}</div>}
+
+              {/* Show loading indicator when generating updated trend */}
+              {allDone && validExtracted.length >= minRequiredFiles && !error && (
+                <div style={{ marginTop: '2rem', textAlign: 'center' }}>
+                   <div className={styles.spinner}></div>
+                   <p style={{ marginTop: '0.5rem', color: '#94a3b8' }}>Generating updated trend analysis...</p>
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
     </div>
   )
