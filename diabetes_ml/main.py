@@ -37,10 +37,10 @@ MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "xgboost_model.pk
 model = None
 try:
     model = joblib.load(MODEL_PATH)
-    print(f"✅ XGBoost model loaded from {MODEL_PATH}")
+    print(f"SUCCESS: XGBoost model loaded from {MODEL_PATH}")
 except FileNotFoundError:
     print(
-        f"⚠️  Model not found at {MODEL_PATH}.\n"
+        f"WARNING: Model not found at {MODEL_PATH}.\n"
         "    Run 'python train_model.py' first to generate the model file."
     )
 
@@ -74,42 +74,56 @@ class PredictRiskResponse(BaseModel):
 # ─────────────────────────────────────────────────────────────
 def engineer_features(reports: List[ReportEntry]) -> dict:
     """
-    Compute trend features from the last two reports in the timeline.
-    
-    Returns a dict with keys matching the model's training features:
-      hba1c, fasting_glucose, hba1c_delta, days_since_last_test, velocity
+    Compute trend features looking back up to 3 reports (Current, Prev1, Prev2).
+    If fewer than 3 reports exist, pad missing data by duplicating the oldest available report (0 delta).
     """
-    if len(reports) < 2:
-        # Only one report — no delta possible; use snapshot features only
-        current = reports[-1]
-        return {
-            "hba1c": current.hba1c,
-            "fasting_glucose": current.fasting_glucose,
-            "hba1c_delta": 0.0,
-            "days_since_last_test": 90.0,  # assumed baseline gap
-            "velocity": 0.0,
-        }
-
-    # Use the most recent two entries
-    prev    = reports[-2]
     current = reports[-1]
+    prev1 = reports[-2] if len(reports) >= 2 else current
+    prev2 = reports[-3] if len(reports) >= 3 else prev1
 
     try:
-        prev_date    = datetime.fromisoformat(prev.report_date)
         current_date = datetime.fromisoformat(current.report_date)
-        days_gap     = max((current_date - prev_date).days, 1)  # avoid zero division
+        prev1_date = datetime.fromisoformat(prev1.report_date)
+        days_gap_1 = max((current_date - prev1_date).days, 1)
     except ValueError:
-        days_gap = 90  # fallback
+        days_gap_1 = 90
 
-    hba1c_delta = current.hba1c - prev.hba1c
-    velocity    = hba1c_delta / days_gap
+    try:
+        prev2_date = datetime.fromisoformat(prev2.report_date)
+        days_gap_2 = max((current_date - prev2_date).days, 1)
+    except ValueError:
+        days_gap_2 = 180
+
+    hba1c_delta_1 = current.hba1c - prev1.hba1c
+    velocity_1 = hba1c_delta_1 / days_gap_1
+
+    hba1c_delta_2 = current.hba1c - prev2.hba1c
+    velocity_2 = hba1c_delta_2 / days_gap_2
+
+    # To calculate acceleration, we need prev_velocity (prev1 vs prev2)
+    if prev1 == prev2:
+        prev_velocity = 0.0
+    else:
+        prev_hba1c_delta = prev1.hba1c - prev2.hba1c
+        try:
+            prev_days_gap = max((prev1_date - prev2_date).days, 1)
+        except ValueError:
+            prev_days_gap = 90
+        prev_velocity = prev_hba1c_delta / prev_days_gap
+
+    acceleration = velocity_1 - prev_velocity
 
     return {
         "hba1c": current.hba1c,
         "fasting_glucose": current.fasting_glucose,
-        "hba1c_delta": round(hba1c_delta, 4),
-        "days_since_last_test": days_gap,
-        "velocity": round(velocity, 6),
+        "hba1c_delta_1": round(hba1c_delta_1, 4),
+        "days_since_prev1": days_gap_1,
+        "velocity_1": round(velocity_1, 6),
+        "hba1c_delta_2": round(hba1c_delta_2, 4),
+        "days_since_prev2": days_gap_2,
+        "velocity_2": round(velocity_2, 6),
+        "acceleration": round(acceleration, 6),
+        "projected_hba1c": round(current.hba1c + velocity_1 * 90, 4),
     }
 
 
@@ -150,7 +164,12 @@ def predict_risk(reports: List[ReportEntry]):
     features = engineer_features(reports_sorted)
 
     # Build feature vector in same order as training
-    FEATURE_ORDER = ["hba1c", "fasting_glucose", "hba1c_delta", "days_since_last_test", "velocity"]
+    FEATURE_ORDER = [
+        "hba1c", "fasting_glucose",
+        "hba1c_delta_1", "days_since_prev1", "velocity_1",
+        "hba1c_delta_2", "velocity_2",
+        "acceleration", "projected_hba1c"
+    ]
     X = np.array([[features[f] for f in FEATURE_ORDER]], dtype=np.float32)
 
     # Predict
@@ -159,7 +178,8 @@ def predict_risk(reports: List[ReportEntry]):
 
     note = (
         f"Based on {len(reports_sorted)} report(s). "
-        f"HbA1c delta over {features['days_since_last_test']} days: {features['hba1c_delta']:+.2f}%."
+        f"Short-term delta: {features['hba1c_delta_1']:+.2f}%. "
+        f"Acceleration: {features['acceleration']:+.4f}."
     )
 
     return PredictRiskResponse(

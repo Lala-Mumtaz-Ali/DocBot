@@ -34,8 +34,8 @@ function buildTrendTable(reports) {
   const header = "Date        | HbA1c (%) | Fasting Glucose (mg/dL)";
   const divider = "------------|-----------|------------------------";
   const rows = reports.map((r) => {
-    const date    = String(r.report_date || "Unknown").padEnd(12);
-    const hba1c   = (r.hba1c   != null ? r.hba1c.toFixed(1)   : "N/A").padEnd(9);
+    const date = String(r.report_date || "Unknown").padEnd(12);
+    const hba1c = (r.hba1c != null ? r.hba1c.toFixed(1) : "N/A").padEnd(9);
     const glucose = (r.fasting_glucose != null ? String(r.fasting_glucose) : "N/A").padEnd(24);
     return `${date}| ${hba1c} | ${glucose}`;
   });
@@ -101,8 +101,8 @@ export async function POST(req) {
 
       if (mlRes.ok) {
         const mlData = await mlRes.json();
-        riskScore  = mlData.risk_score  ?? 0;
-        riskLabel  = mlData.risk_label  ?? "Stable";
+        riskScore = mlData.risk_score ?? 0;
+        riskLabel = mlData.risk_label ?? "Stable";
         mlFeatures = mlData.features_used ?? {};
       } else {
         console.warn("⚠️  ML service returned non-OK:", mlRes.status);
@@ -111,33 +111,60 @@ export async function POST(req) {
       console.warn("⚠️  ML service unreachable:", mlErr.message);
       // Degrade gracefully: compute a simple rule-based score
       const latest = reports[reports.length - 1];
-      const hba1c  = latest.hba1c ?? 0;
-      riskScore    = hba1c < 6.5 ? 0 : hba1c < 8.0 ? 1 : 2;
-      riskLabel    = ["Stable", "Moderate Risk", "Rapid Deterioration"][riskScore];
+      const hba1c = latest.hba1c ?? 0;
+      riskScore = hba1c < 6.5 ? 0 : hba1c < 8.0 ? 1 : 2;
+      riskLabel = ["Stable", "Moderate Risk", "Rapid Deterioration"][riskScore];
     }
-
     // ── 3. Build LLM synthesis prompt ──
-    const trendTable  = buildTrendTable(reports);
-    const riskEmoji   = ["🟢", "🟡", "🔴"][riskScore] ?? "⚪";
-    const latestReport = reports[reports.length - 1];
-    const prevReport   = reports[reports.length - 2];
+    const trendTable    = buildTrendTable(reports);
+    const riskEmoji     = ["🟢", "🟡", "🔴"][riskScore] ?? "⚪";
+    const latestReport  = reports[reports.length - 1];
+    const prevReport    = reports[reports.length - 2];
 
-    const synthesisPrompt = `You are DOCBOT, an advanced prognostic medical AI. Your job is to forecast and predict a patient's future diabetes trajectory based on our Machine Learning pipeline's assessment of their current trends.
+    // Pre-compute values to give to the LLM as facts, not for it to infer
+    const latestHba1c   = latestReport.hba1c?.toFixed(1)          ?? "N/A";
+    const latestGlucose = latestReport.fasting_glucose             ?? "N/A";
+    const prevHba1c     = prevReport.hba1c?.toFixed(1)             ?? "N/A";
+    const prevGlucose   = prevReport.fasting_glucose               ?? "N/A";
+    const delta1        = mlFeatures.hba1c_delta_1 != null
+                          ? `${mlFeatures.hba1c_delta_1 > 0 ? "+" : ""}${mlFeatures.hba1c_delta_1.toFixed(2)}%`
+                          : "N/A";
+    const accel         = mlFeatures.acceleration != null
+                          ? mlFeatures.acceleration.toFixed(4)
+                          : "N/A";
+    const trendDirection = (mlFeatures.hba1c_delta_1 ?? 0) > 0
+                          ? "WORSENING (HbA1c is increasing)"
+                          : (mlFeatures.hba1c_delta_1 ?? 0) < 0
+                          ? "IMPROVING (HbA1c is decreasing)"
+                          : "FLAT (no change detected)";
 
-Patient Data Summary:
+    const synthesisPrompt = `You are DOCBOT, a friendly medical AI assistant explaining diabetes lab results to a patient in simple, clear language.
+
+=== PATIENT LAB DATA (CHRONOLOGICAL) ===
 ${trendTable}
 
-**FUTURE PROGNOSIS SCORE**: ${riskScore} (${riskLabel}) ${riskEmoji}
-${mlFeatures.hba1c_delta != null ? `(Based on HbA1c Change: ${mlFeatures.hba1c_delta > 0 ? "+" : ""}${mlFeatures.hba1c_delta} over ${mlFeatures.days_since_last_test} days)` : ""}
+=== MACHINE LEARNING ANALYSIS ===
+- Previous HbA1c: ${prevHba1c}%  |  Previous Fasting Glucose: ${prevGlucose} mg/dL
+- Latest HbA1c:   ${latestHba1c}%  |  Latest Fasting Glucose:   ${latestGlucose} mg/dL
+- Short-term HbA1c Change: ${delta1}
+- Trend Direction: ${trendDirection}
+- Acceleration: ${accel} (positive = worsening is speeding up, negative = worsening is slowing down)
+- Overall Risk Score: ${riskScore}/2 → "${riskLabel}" ${riskEmoji}
 
-Instructions:
-1. Start with a warm, empathetic greeting as DOCBOT.
-2. Explicitly explain to the patient that based on their historical trend, their **predicted future state next month/visit** is: ${riskLabel}.
-3. Explain WHY you predict this future state. (e.g. "Because your HbA1c increased by X over the last Y days, I expect your numbers to...").
-4. Tell the patient exactly how their results will likely look in 1-3 months time if this trajectory holds.
-5. End with encouragement and a clear reminder to consult their doctor to alter or maintain this expected future.
-6. DO NOT diagnose medically, but DO explain your future prediction confidently.
-7. Keep the response under 200 words. Be concise and friendly.
+=== YOUR TASK ===
+Write a short, warm, patient-friendly explanation in plain English. Follow this EXACT structure:
+
+**Greeting:** One sentence greeting the patient.
+
+**Your Results:** In 2-3 sentences, plainly describe what the numbers show (e.g. "Your HbA1c went from X% to Y%, which means..."). Use the exact numbers above. Do NOT make up numbers.
+
+**What This Means:** In 1-2 sentences, explain if this is good or bad. CRITICAL: an INCREASE in HbA1c or Glucose is ALWAYS a bad sign — say so clearly. A DECREASE is always good — say so positively.
+
+**Our Prediction:** In 1-2 sentences, state what the ML model predicts will happen next based on the risk score (${riskLabel}).
+
+**Action:** One sentence advising them to consult their doctor.
+
+Keep the total response under 180 words. Write in second person ("you / your"). Do NOT include any <think> tags or reasoning steps.
 
 DOCBOT response:`;
 
@@ -152,14 +179,14 @@ DOCBOT response:`;
 
     // ── 5. Return result ──
     return NextResponse.json({
-      success:    true,
+      success: true,
       userId,
       risk_score: riskScore,
       risk_label: riskLabel,
       analysis,
-      reports:    reports.map((r) => ({
-        report_date:     r.report_date,
-        hba1c:           r.hba1c,
+      reports: reports.map((r) => ({
+        report_date: r.report_date,
+        hba1c: r.hba1c,
         fasting_glucose: r.fasting_glucose,
         source_filename: r.source_filename,
       })),
