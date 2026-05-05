@@ -1,235 +1,760 @@
-
 "use client";
 
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { AlertCircle, CheckCircle2 } from "lucide-react";
-import styles from "../style/sign.module.css"; // ✅ Make sure this file exists
+import { useRouter } from "next/navigation";
+
+import {
+  motion,
+  AnimatePresence,
+} from "framer-motion";
+
+import {
+  AlertCircle,
+  CheckCircle2,
+} from "lucide-react";
+
+import { GoogleLogin }
+from "@react-oauth/google";
+
+import styles
+from "../style/sign.module.css";
 
 const Signup = () => {
-  const [errorMsg, setErrorMsg] = useState("");
-  const [successMsg, setSuccessMsg] = useState("");
-  const [passwordError, setPasswordError] = useState(false);
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [address, setAddress] = useState("");
-  const [city, setCity] = useState("");
-  const [role, setRole] = useState("");
-  const [contact, setContact] = useState(""); // ✅ Added contact field
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  const handleSignup = async () => {
-    setErrorMsg("");
-    setSuccessMsg("");
+  const router = useRouter();
 
-    // ✅ Field validation
-    if (!name || !email || !address || !city || !role || !contact || !password || !confirmPassword) {
-      setErrorMsg("⚠️ All fields are required.");
-      return;
-    }
+  // ============================================
+  // STATES
+  // ============================================
 
-    // ✅ Password length check
-    if (password.length < 8) {
-      setErrorMsg("⚠️ Password must be at least 8 characters long.");
-      return;
-    }
+  const [errorMsg, setErrorMsg] =
+    useState("");
 
-    // ✅ Password match check
-    if (password !== confirmPassword) {
-      setPasswordError(true);
-      setErrorMsg("⚠️ Passwords must match.");
-      return;
-    } else {
-      setPasswordError(false);
-    }
+  const [successMsg, setSuccessMsg] =
+    useState("");
 
-    try {
-      const res = await fetch("/api/sign", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, address, city, role, contact, password }),
-      });
+  const [isGoogleUser,
+    setIsGoogleUser] =
+    useState(false);
 
-      const data = await res.json();
+  const [name, setName] =
+    useState("");
 
-      if (!res.ok || !data.success) {
-        if (res.status === 409) {
-          setErrorMsg("⚠️ This email is already registered.");
-        } else if (res.status === 400) {
-          setErrorMsg("⚠️ Please fill in all required fields correctly.");
-        } else {
-          setErrorMsg(data.message || "❌ Signup failed. Try again later.");
-        }
+  const [email, setEmail] =
+    useState("");
+
+  const [address, setAddress] =
+    useState("");
+
+  const [city, setCity] =
+    useState("");
+
+  const [role, setRole] =
+    useState("");
+
+  const [contact, setContact] =
+    useState("");
+
+  const [password, setPassword] =
+    useState("");
+
+  const [
+    confirmPassword,
+    setConfirmPassword,
+  ] = useState("");
+
+  const [showPassword,
+    setShowPassword] =
+    useState(false);
+
+  const [
+    showConfirmPassword,
+    setShowConfirmPassword,
+  ] = useState(false);
+
+  // ============================================
+  // VALIDATIONS
+  // ============================================
+
+  const validateEmail =
+    (email) => {
+
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        .test(email);
+    };
+
+  const validatePhone =
+    (phone) => {
+
+      return /^[0-9]{11}$/
+        .test(phone);
+    };
+
+  // ============================================
+  // SIGNUP
+  // ============================================
+
+  const handleSignup =
+    async () => {
+
+      setErrorMsg("");
+      setSuccessMsg("");
+
+      // REQUIRED FIELDS
+
+      if (
+        !name ||
+        !email ||
+        !address ||
+        !city ||
+        !role ||
+        !contact
+      ) {
+
+        setErrorMsg(
+          "⚠️ All fields are required."
+        );
+
         return;
       }
 
-      // ✅ Success
-      const { result, token } = data;
-      // localStorage.setItem("User", JSON.stringify(result));
-      // localStorage.setItem("Token", token);
+      // PASSWORD REQUIRED FOR NORMAL USERS
 
-      setSuccessMsg("✅ Account created successfully!");
-      setName("");
-      setEmail("");
-      setAddress("");
-      setCity("");
-      setRole("");
-      setContact("");
-      setPassword("");
-      setConfirmPassword("");
-    } catch (err) {
-      console.error("Signup error:", err);
-      setErrorMsg("❌ Network or server error occurred.");
+      if (
+        !isGoogleUser &&
+        (!password ||
+          !confirmPassword)
+      ) {
+
+        setErrorMsg(
+          "⚠️ Password is required."
+        );
+
+        return;
+      }
+
+      // EMAIL VALIDATION
+
+      if (
+        !validateEmail(email)
+      ) {
+
+        setErrorMsg(
+          "⚠️ Invalid email."
+        );
+
+        return;
+      }
+
+      // PHONE VALIDATION
+
+      if (
+        !validatePhone(contact)
+      ) {
+
+        setErrorMsg(
+          "⚠️ Invalid phone number."
+        );
+
+        return;
+      }
+
+      // PASSWORD MATCH
+
+      if (
+        !isGoogleUser &&
+        password !==
+          confirmPassword
+      ) {
+
+        setErrorMsg(
+          "⚠️ Passwords do not match."
+        );
+
+        return;
+      }
+
+      try {
+
+        const res =
+          await fetch(
+            "/api/sign",
+            {
+              method: "POST",
+
+              headers: {
+                "Content-Type":
+                  "application/json",
+              },
+
+              body: JSON.stringify({
+                name,
+                email,
+                address,
+                city,
+                role,
+                contact,
+
+                password:
+                  isGoogleUser
+                    ? null
+                    : password,
+
+                isGoogleUser,
+              }),
+            }
+          );
+
+        const data =
+          await res.json();
+
+        if (
+          !res.ok ||
+          !data.success
+        ) {
+
+          setErrorMsg(
+            data.message ||
+              "Signup Failed"
+          );
+
+          return;
+        }
+
+        // SUCCESS
+
+        setSuccessMsg(
+          "✅ Account Created Successfully!"
+        );
+
+        // RESET
+
+        setName("");
+        setEmail("");
+        setAddress("");
+        setCity("");
+        setRole("");
+        setContact("");
+        setPassword("");
+        setConfirmPassword("");
+        setIsGoogleUser(false);
+
+        setTimeout(() => {
+
+          router.push(
+            "/"
+          );
+
+        }, 1500);
+
+      } catch (error) {
+
+        console.log(error);
+
+        setErrorMsg(
+          "❌ Server Error"
+        );
+      }
+    };
+
+  // ============================================
+  // GOOGLE SIGNUP
+  // ============================================
+
+  // ============================================
+// GOOGLE SIGNUP
+// ============================================
+
+const handleGoogleSignup =
+  async (credentialResponse) => {
+
+    try {
+
+      const res =
+        await fetch(
+          "/api/google-login",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body: JSON.stringify({
+              token:
+                credentialResponse.credential,
+            }),
+          }
+        );
+
+      const data =
+        await res.json();
+
+      // ====================================
+      // USER ALREADY EXISTS
+      // ====================================
+
+      if (!data.isNewUser) {
+
+        setErrorMsg(
+          "⚠️ Account already exists. Please login."
+        );
+
+        setTimeout(() => {
+
+          router.push(
+            "/"
+          );
+
+        }, 1500);
+
+        return;
+      }
+
+      // ====================================
+      // NEW GOOGLE USER
+      // ====================================
+
+      // SAVE GOOGLE DATA
+
+      localStorage.setItem(
+        "googleSignupData",
+
+        JSON.stringify({
+          name:
+            data.googleData.name,
+
+          email:
+            data.googleData.email,
+
+        })
+      );
+
+      setSuccessMsg(
+        "✅ Google verified. Complete your profile."
+      );
+
+      // REDIRECT TO COMPLETE PROFILE
+
+      setTimeout(() => {
+
+        router.push(
+          "/complete-profile"
+        );
+
+      }, 1500);
+
+    } catch (error) {
+
+      console.log(error);
+
+      setErrorMsg(
+        "❌ Google Signup Failed"
+      );
     }
   };
 
   return (
+
     <div className={styles.signup}>
-      <div className={styles.signupImg}></div>
 
-      <div className={styles.signupForm}>
-        <h1>DocBot Sign Up</h1>
+      {/* IMAGE */}
 
-        {/* ✨ Animated error/success messages */}
+      <div
+        className={
+          styles.signupImg
+        }
+      ></div>
+
+      {/* FORM */}
+
+      <div
+        className={
+          styles.signupForm
+        }
+      >
+
+        <h1>
+          DocBot Sign Up
+        </h1>
+
+        {/* ALERTS */}
+
         <AnimatePresence>
+
           {errorMsg && (
+
             <motion.div
               className={`${styles.alertBox} ${styles.errorBox}`}
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.3 }}
+
+              initial={{
+                opacity: 0,
+                y: -10,
+              }}
+
+              animate={{
+                opacity: 1,
+                y: 0,
+              }}
+
+              exit={{
+                opacity: 0,
+                y: -10,
+              }}
             >
-              <AlertCircle className={styles.alertIcon} />
-              <span>{errorMsg}</span>
+
+              <AlertCircle />
+
+              <span>
+                {errorMsg}
+              </span>
+
             </motion.div>
           )}
 
           {successMsg && (
+
             <motion.div
               className={`${styles.alertBox} ${styles.successBox}`}
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.3 }}
+
+              initial={{
+                opacity: 0,
+                y: -10,
+              }}
+
+              animate={{
+                opacity: 1,
+                y: 0,
+              }}
+
+              exit={{
+                opacity: 0,
+                y: -10,
+              }}
             >
-              <CheckCircle2 className={styles.alertIcon} />
-              <span>{successMsg}</span>
+
+              <CheckCircle2 />
+
+              <span>
+                {successMsg}
+              </span>
+
             </motion.div>
           )}
+
         </AnimatePresence>
 
-        <div className={styles.inputWrapper}>
-          {/* Name */}
+        {/* INPUTS */}
+
+        <div
+          className={
+            styles.inputWrapper
+          }
+        >
+
+          {/* NAME */}
+
           <input
-            className={styles.signupInput}
+            className={
+              styles.signupInput
+            }
+
             type="text"
+
             value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Enter Your Name"
-            required
+
+            onChange={(e) =>
+              setName(
+                e.target.value
+              )
+            }
+
+            placeholder="Enter Name"
           />
 
-          {/* Email */}
+          {/* EMAIL */}
+
           <input
-            className={styles.signupInput}
+            className={
+              styles.signupInput
+            }
+
             type="email"
+
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="Enter Your Email"
-            required
+
+            onChange={(e) =>
+              setEmail(
+                e.target.value
+              )
+            }
+
+            placeholder="Enter Email"
+
+            disabled={
+              isGoogleUser
+            }
           />
 
-          {/* Address */}
+          {/* ADDRESS */}
+
           <input
-            className={styles.signupInput}
+            className={
+              styles.signupInput
+            }
+
             type="text"
+
             value={address}
-            onChange={(e) => setAddress(e.target.value)}
-            placeholder="Enter Your Address"
-            required
+
+            onChange={(e) =>
+              setAddress(
+                e.target.value
+              )
+            }
+
+            placeholder="Enter Address"
           />
 
-          {/* City */}
+          {/* CITY */}
+
           <input
-            className={styles.signupInput}
+            className={
+              styles.signupInput
+            }
+
             type="text"
+
             value={city}
-            onChange={(e) => setCity(e.target.value)}
-            placeholder="Enter Your City"
-            required
+
+            onChange={(e) =>
+              setCity(
+                e.target.value
+              )
+            }
+
+            placeholder="Enter City"
           />
 
-          {/* Contact */}
+          {/* CONTACT */}
+
           <input
-            className={styles.signupInput}
+            className={
+              styles.signupInput
+            }
+
             type="text"
+
             value={contact}
-            onChange={(e) => setContact(e.target.value)}
-            placeholder="Enter Your Contact Number"
-            required
+
+            onChange={(e) =>
+              setContact(
+                e.target.value
+              )
+            }
+
+            placeholder="03XXXXXXXXX"
           />
 
-          {/* Role */}
+          {/* ROLE */}
+
           <select
-            className={styles.signupInput}
+            className={
+              styles.signupInput
+            }
+
             value={role}
-            onChange={(e) => setRole(e.target.value)}
-            required
+
+            onChange={(e) =>
+              setRole(
+                e.target.value
+              )
+            }
           >
-            <option value="">Select Your Role</option>
-            <option value="hospital">Hospital</option>
-            <option value="doctor">Doctor</option>
-            <option value="patient">Patient</option>
+
+            <option value="">
+              Select Role
+            </option>
+
+            <option value="hospital">
+              Hospital
+            </option>
+
+            <option value="doctor">
+              Doctor
+            </option>
+
+            <option value="patient">
+              Patient
+            </option>
+
           </select>
 
-          {/* Password */}
-          <div style={{ position: "relative", backgroundColor: "white" }}>
+          {/* PASSWORD */}
+
+          <div
+            style={{
+              position:
+                "relative",
+            }}
+          >
+
             <input
-              className={styles.signupInput}
-              type={showPassword ? "text" : "password"}
+              className={
+                styles.signupInput
+              }
+
+              type={
+                showPassword
+                  ? "text"
+                  : "password"
+              }
+
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter Your Password"
-              required
+
+              onChange={(e) =>
+                setPassword(
+                  e.target.value
+                )
+              }
+
+              placeholder="Password"
+
+              disabled={
+                isGoogleUser
+              }
             />
+
             <span
-              onClick={() => setShowPassword(!showPassword)}
-              className={styles.togglePasswordIcon}
+              onClick={() =>
+                setShowPassword(
+                  !showPassword
+                )
+              }
+
+              className={
+                styles.togglePasswordIcon
+              }
             >
-              {showPassword ? "🙈" : "👁️"}
+              {showPassword
+                ? "🙈"
+                : "👁️"}
             </span>
+
           </div>
 
-          {/* Confirm Password */}
-          <div style={{ position: "relative", backgroundColor: "white" }}>
+          {/* CONFIRM PASSWORD */}
+
+          <div
+            style={{
+              position:
+                "relative",
+            }}
+          >
+
             <input
-              className={styles.signupInput}
-              type={showConfirmPassword ? "text" : "password"}
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Confirm Your Password"
-              required
+              className={
+                styles.signupInput
+              }
+
+              type={
+                showConfirmPassword
+                  ? "text"
+                  : "password"
+              }
+
+              value={
+                confirmPassword
+              }
+
+              onChange={(e) =>
+                setConfirmPassword(
+                  e.target.value
+                )
+              }
+
+              placeholder="Confirm Password"
+
+              disabled={
+                isGoogleUser
+              }
             />
+
             <span
-              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-              className={styles.togglePasswordIcon}
+              onClick={() =>
+                setShowConfirmPassword(
+                  !showConfirmPassword
+                )
+              }
+
+              className={
+                styles.togglePasswordIcon
+              }
             >
-              {showConfirmPassword ? "🙈" : "👁️"}
+              {showConfirmPassword
+                ? "🙈"
+                : "👁️"}
             </span>
+
           </div>
+
         </div>
 
+        {/* REGISTER BUTTON */}
+
         <button
-          className={styles.loginButton}
-          onClick={handleSignup}
-          disabled={!name || !email || !address || !city || !role || !contact || !password || !confirmPassword}
+          className={
+            styles.loginButton
+          }
+
+          onClick={
+            handleSignup
+          }
         >
           Register
         </button>
+
+        {/* DIVIDER */}
+
+        <div
+          style={{
+            margin: "20px 0",
+            textAlign: "center",
+            color: "#999",
+          }}
+        >
+          OR
+        </div>
+
+        {/* GOOGLE SIGNUP */}
+
+        <div
+          style={{
+            display: "flex",
+            justifyContent:
+              "center",
+          }}
+        >
+
+          <GoogleLogin
+            onSuccess={
+              handleGoogleSignup
+            }
+
+            onError={() =>
+              setErrorMsg(
+                "❌ Google Signup Failed"
+              )
+            }
+             text="signup_with"
+              shape="pill"
+              theme="filled_blue"
+              size="large"
+          />
+
+        </div>
+
       </div>
     </div>
   );
