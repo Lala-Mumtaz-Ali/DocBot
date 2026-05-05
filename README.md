@@ -117,3 +117,4 @@ Open your browser and navigate to: **[http://localhost:3000/chat](http://localho
 4.  **Generation**: DeepSeek-R1 (1.5b) writes a helpful answer using those documents.
 
 pip install zain
+pip install zain_1

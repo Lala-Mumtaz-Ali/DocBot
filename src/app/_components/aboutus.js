@@ -61,7 +61,7 @@ const Footer = () => {
             </li>
             <li>
               <FaEnvelope className={styles.icon} />
-              <a href="zainulabidinkhanxada@gmail.com">admin@gmail.com</a>
+              <a href="docbotaihealthassistant@gmail.com">docbotaihealthassistant@gmail.com</a>
             </li>
           </ul>
         </div>
