@@ -8,7 +8,8 @@ import io
 import os
 import base64
 from dotenv import load_dotenv
-from embeddings import OllamaEmbeddings
+from embeddings import LocalEmbeddings
+from groq import Groq
 import torch
 import requests
 import json
@@ -45,12 +46,16 @@ qa_pipeline = pipeline("question-answering", model=MODEL_NAME, tokenizer=MODEL_N
 print(f"QA Model loaded on device {device}.")
 
 # Embedding Setup
-ollama = OllamaEmbeddings()
+ollama = LocalEmbeddings()
 
 # Generative Model Setup
-GEN_MODEL = "deepseek-r1:1.5b"
-VISION_MODEL = "llava" # Or llava-phi3
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+GEN_MODEL = os.getenv("GEN_MODEL", "llama-3.3-70b-versatile") # Groq cloud model
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+if not GROQ_API_KEY:
+    print("WARNING: GROQ_API_KEY is not set in environment variables.")
+
+groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 # ============================
 # OCR INIT
@@ -92,9 +97,9 @@ class ChatRequest(BaseModel):
     history: list[dict] = []
 
 def generate_deepseek_response(context, question, history):
-    # Use Chat API for better structure (handles system prompt & history)
-    url = f"{OLLAMA_BASE_URL}/api/chat"
-    
+    if not groq_client:
+        return "Error: GROQ_API_KEY is not configured."
+
     messages = []
     
     # System Prompt
@@ -108,33 +113,36 @@ Do not hallucinate. Keep the answer concise."""
     for msg in history:
         role = msg.get("role", "user")
         content = msg.get("content", "")
-        # Map generic roles if needed, but 'user'/'assistant' are standard
+        # Skip hidden context messages injected by PDF uploads
+        if msg.get("hidden"):
+            continue
+        # Map frontend roles to Groq-compatible roles
+        if role in ("bot", "model", "assistant"):
+            role = "assistant"
+        elif role != "system":
+            role = "user"
         messages.append({"role": role, "content": content})
 
     # Add Current Context and Question as User Message
     user_input = f"Context:\n{context}\n\nQuestion: {question}"
     messages.append({"role": "user", "content": user_input})
     
-    payload = {
-        "model": GEN_MODEL,
-        "messages": messages,
-        "stream": False
-    }
-    
     try:
-        response = requests.post(url, json=payload)
-        response.raise_for_status()
+        chat_completion = groq_client.chat.completions.create(
+            messages=messages,
+            model=GEN_MODEL,
+            temperature=0.2,
+        )
         
-        # Parse Chat Response
-        content = response.json().get("message", {}).get("content", "")
+        content = chat_completion.choices[0].message.content
         
-        # Clean <think> tags if present (DeepSeek-R1 specific)
+        # Clean <think> tags if present (in case user switches to DeepSeek on Groq)
         content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL).strip()
         
         return content
 
     except Exception as e:
-        print(f"DeepSeek Generation Error: {e}")
+        print(f"Groq Generation Error: {e}")
         return f"Error generating response with {GEN_MODEL}. Please check logs."
 
 @app.get("/")
@@ -162,21 +170,28 @@ def chat(request: ChatRequest):
                     "index": VECTOR_INDEX,
                     "path": "embedding",
                     "queryVector": query_embedding,
-                    "numCandidates": 100,
-                    "limit": 10  # Retrieve more candidates for reranking
+                    "numCandidates": 200,
+                    "limit": 30  # Retrieve more candidates for better reranking coverage
+                }
+            },
+            {
+                "$addFields": {
+                    "score": {"$meta": "vectorSearchScore"}
                 }
             },
             {
                 "$project": {
-                    "_id": 0,
-                    "text": 1,
-                    "metadata": 1,
-                    "score": {"$meta": "vectorSearchScore"}
+                    "embedding": 0  # Exclude the large vector, keep everything else
                 }
             }
         ]
         results = list(collection.aggregate(pipeline_agg))
         print(f"   Action: Retrieved {len(results)} initial candidates from MongoDB.")
+        # Debug: print raw document structure to diagnose field mapping
+        if results:
+            print(f"   [DEBUG] Raw doc keys: {list(results[0].keys())}")
+            print(f"   [DEBUG] Raw doc[0] metadata: {results[0].get('metadata')}")
+            print(f"   [DEBUG] Raw doc[0] score: {results[0].get('score')}")
 
         if not results:
              return {
@@ -185,29 +200,41 @@ def chat(request: ChatRequest):
                 "debug_info": []
             }
 
+        # Helper to extract source from various possible locations
+        def get_source(doc):
+            meta = doc.get("metadata")
+            if isinstance(meta, dict) and meta.get("source"):
+                return meta["source"]
+            if doc.get("source"):
+                return doc["source"]
+            return "Medical Knowledge Base"
+
         # 3. BioBERT Reranking
         print("\nStep 4: Reranking with BioBERT")
         ranked_chunks = []
         for i, doc in enumerate(results):
-            text = doc.get("text", "")
+            text = doc.get("text", doc.get("pageContent", ""))
+            if not text:
+                continue
             # Use BioBERT to check if this chunk answers the question
             # We use the confidence score as a relevance metric
             qa_result = qa_pipeline(question=user_message, context=text)
             bert_score = qa_result["score"]
             
+            source = get_source(doc)
             ranked_chunks.append({
                 "text": text,
-                "metadata": doc.get("metadata", {}),
+                "source": source,
                 "mongo_score": doc.get("score"),
                 "bert_score": bert_score
             })
-            print(f"   Chunk {i+1}: MongoScore={doc.get('score'):.4f} | BioBERTScore={bert_score:.4f} | Source={doc.get('metadata', {}).get('source')}")
+            print(f"   Chunk {i+1}: MongoScore={doc.get('score', 0):.4f} | BioBERTScore={bert_score:.4f} | Source={source}")
 
         # Sort by BioBERT score desc
         ranked_chunks.sort(key=lambda x: x["bert_score"], reverse=True)
         
-        # Take Top 3
-        top_k = ranked_chunks[:3]
+        # Take Top 7 best chunks after reranking
+        top_k = ranked_chunks[:7]
         print(f"   Action: Selected Top {len(top_k)} chunks for generation.")
 
         # 4. Context Construction
@@ -215,8 +242,8 @@ def chat(request: ChatRequest):
         context_text = "\n\n".join([c["text"] for c in top_k])
         print(f"   Context Preview: {context_text[:200]}...")
 
-        # 5. DeepSeek Generation
-        print("\nStep 6: Generation (DeepSeek-R1)")
+        # 5. LLM Generation
+        print(f"\nStep 6: Generation ({GEN_MODEL})")
         print(f"   Action: Sending prompt to {GEN_MODEL}...")
         final_answer = generate_deepseek_response(context_text, user_message, history[-5:]) # Pass last 5 turns
         print(f"   Output: {final_answer}")
@@ -229,13 +256,14 @@ def chat(request: ChatRequest):
             debug_info.append({
                 "rank": i+1,
                 "bert_score": c["bert_score"],
-                "source": c["metadata"].get("source", "Unknown"),
+                "mongo_score": c["mongo_score"],
+                "source": c["source"],
                 "content": c["text"][:100]
             })
 
         return {
             "reply": final_answer,
-            "sources": [c["metadata"].get("source") for c in top_k if c["metadata"].get("source")],
+            "sources": [c["source"] for c in top_k],
             "debug_info": debug_info
         }
 
@@ -385,17 +413,17 @@ Text:
 {full_text[:4000]}
 """
 
-        response = requests.post(
-            f"{OLLAMA_BASE_URL}/api/generate",
-            json={
-                "model": GEN_MODEL,
-                "prompt": prompt,
-                "stream": False
-            },
-            timeout=60
+        if not groq_client:
+            raise HTTPException(status_code=500, detail="GROQ_API_KEY is not configured.")
+
+        chat_completion = groq_client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model=GEN_MODEL,
+            temperature=0.1,
+            response_format={"type": "json_object"}
         )
 
-        ai_output = response.json().get("response", "")
+        ai_output = chat_completion.choices[0].message.content
 
         print("\n🤖 AI OUTPUT:")
         print(ai_output)

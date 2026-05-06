@@ -1,23 +1,19 @@
-import requests
 import os
-import json
+from sentence_transformers import SentenceTransformer
 
-class OllamaEmbeddings:
-    def __init__(self, model: str = "nomic-embed-text", base_url: str = "http://localhost:11434"):
-        self.model = os.getenv("OLLAMA_EMBED_MODEL", model)
-        self.base_url = os.getenv("OLLAMA_BASE_URL", base_url)
+class LocalEmbeddings:
+    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
+        # We use a small, efficient model suitable for CPU inference and free tiers.
+        self.model_name = os.getenv("EMBED_MODEL", model_name)
+        print(f"Loading Local Embedding Model: {self.model_name}...")
+        self.model = SentenceTransformer(self.model_name)
 
     def embed_query(self, text: str) -> list[float]:
         try:
-            url = f"{self.base_url}/api/embeddings"
-            payload = {
-                "model": self.model,
-                "prompt": text
-            }
-            response = requests.post(url, json=payload)
-            response.raise_for_status()
-            data = response.json()
-            return data.get("embedding", [])
+            # Generate embedding and convert to list of floats
+            embedding = self.model.encode(text)
+            return embedding.tolist()
         except Exception as e:
-            print(f"Error generating embedding: {e}")
+            print(f"Error generating local embedding: {e}")
             raise e
+
