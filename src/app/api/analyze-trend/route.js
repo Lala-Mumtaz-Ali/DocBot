@@ -2,29 +2,36 @@ import { NextResponse } from "next/server";
 import connectDB from "@/app/lib/db";
 import PatientReport from "@/app/lib/models/patientReport";
 
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
-const GEN_MODEL = process.env.OLLAMA_MODEL || "deepseek-r1:1.5b";
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GEN_MODEL = process.env.GEN_MODEL || "llama-3.3-70b-versatile";
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://localhost:8001";
 
 // ─────────────────────────────────────────────────────────────
-// CALL DEEPSEEK VIA OLLAMA
+// CALL GROQ
 // ─────────────────────────────────────────────────────────────
-async function callDeepSeek(prompt) {
-  const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
+async function callGroq(prompt) {
+  if (!GROQ_API_KEY) throw new Error("GROQ_API_KEY is not set.");
+
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: GEN_MODEL, prompt, stream: false }),
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${GROQ_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: GEN_MODEL,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.2,
+    }),
   });
 
   if (!response.ok) {
-    throw new Error(`Ollama error: ${response.status}`);
+    const err = await response.text();
+    throw new Error(`Groq error: ${response.status} ${err}`);
   }
 
   const data = await response.json();
-  let text = data.response || "";
-  // Strip DeepSeek R1 chain-of-thought tags
-  text = text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
-  return text;
+  return data.choices[0].message.content || "";
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -168,12 +175,12 @@ Keep the total response under 180 words. Write in second person ("you / your"). 
 
 DOCBOT response:`;
 
-    // ── 4. Call DeepSeek R1 for synthesis ──
+    // ── 4. Call Groq for synthesis ──
     let analysis = "";
     try {
-      analysis = await callDeepSeek(synthesisPrompt);
+      analysis = await callGroq(synthesisPrompt);
     } catch (llmErr) {
-      console.error("DeepSeek synthesis failed:", llmErr);
+      console.error("Groq synthesis failed:", llmErr);
       analysis = `Your ${reports.length} reports have been analyzed. Your risk level is "${riskLabel}". Please consult your doctor for a detailed explanation of your results.`;
     }
 

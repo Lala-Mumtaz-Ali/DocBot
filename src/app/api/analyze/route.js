@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 
+const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || 'http://localhost:8000';
+
 export async function POST(req) {
     try {
         const formData = await req.formData();
@@ -7,7 +9,7 @@ export async function POST(req) {
         console.log("Analyzing file...");
 
         // Forward to Python backend
-        const pythonResponse = await fetch('http://127.0.0.1:8000/analyze_report', {
+        const pythonResponse = await fetch(`${PYTHON_BACKEND_URL}/analyze_report`, {
             method: 'POST',
             body: formData, // fetch automatically sets the correct Multipart Content-Type
         });

@@ -2,39 +2,40 @@ import { NextResponse } from "next/server";
 import connectDB from "@/app/lib/db";
 import PatientReport from "@/app/lib/models/patientReport";
 
-const PYTHON_BACKEND_URL = "http://localhost:8000";
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
-const GEN_MODEL = process.env.OLLAMA_MODEL || "deepseek-r1:1.5b";
+const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || "http://localhost:8000";
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GEN_MODEL = process.env.GEN_MODEL || "llama-3.3-70b-versatile";
 
 // ─────────────────────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────────────────────
 
-/**
- * Calls DeepSeek R1 via Ollama with a structured extraction prompt.
- * Returns the raw text response.
- */
-async function callDeepSeek(prompt) {
-  const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
+async function callGroq(prompt, jsonMode = false) {
+  if (!GROQ_API_KEY) throw new Error("GROQ_API_KEY is not set.");
+
+  const body = {
+    model: GEN_MODEL,
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0.1,
+  };
+  if (jsonMode) body.response_format = { type: "json_object" };
+
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: GEN_MODEL,
-      prompt,
-      stream: false,
-    }),
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${GROQ_API_KEY}`,
+    },
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
-    throw new Error(`Ollama error: ${response.status} ${response.statusText}`);
+    const err = await response.text();
+    throw new Error(`Groq error: ${response.status} ${err}`);
   }
 
   const data = await response.json();
-  let text = data.response || "";
-
-  // Strip <think>...</think> blocks (DeepSeek R1 chain-of-thought)
-  text = text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
-  return text;
+  return data.choices[0].message.content || "";
 }
 
 /**
@@ -262,14 +263,14 @@ ${truncatedText}
 
 JSON output:`;
 
-    // 4. Call DeepSeek R1
+    // 4. Call Groq
     let llmResponse = "";
     try {
-      llmResponse = await callDeepSeek(extractionPrompt);
+      llmResponse = await callGroq(extractionPrompt, true);
     } catch (llmErr) {
-      console.error("DeepSeek call failed:", llmErr);
+      console.error("Groq call failed:", llmErr);
       return NextResponse.json(
-        { error: "Failed to contact the AI model. Is Ollama running?" },
+        { error: "Failed to contact the AI model. Check GROQ_API_KEY." },
         { status: 503 }
       );
     }

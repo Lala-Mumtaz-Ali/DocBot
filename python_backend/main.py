@@ -14,9 +14,6 @@ import torch
 import requests
 import json
 import re
-import easyocr
-from PIL import Image
-import numpy as np
 
 # Load environment variables
 # Try loading from the unified Next.js root config first, then fallback to local .env
@@ -58,39 +55,44 @@ if not GROQ_API_KEY:
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 # ============================
-# OCR INIT
+# GROQ VISION OCR
 # ============================
-ocr_reader = easyocr.Reader(['en'], gpu=torch.cuda.is_available())
+OCR_MODEL = "llama-3.2-11b-vision-preview"
 
-def group_ocr_text_by_line(ocr_results, y_tolerance=20):
-    """Group OCR results by y-coordinates so that labels and values stay on the same line."""
-    if not ocr_results:
+def ocr_with_groq(page_image_bytes: bytes) -> str:
+    """Extract text from a scanned page image using Groq vision model."""
+    if not groq_client:
+        print("Groq client not available for OCR.")
         return ""
-        
-    items = []
-    for bbox, text, prob in ocr_results:
-        y_center = (bbox[0][1] + bbox[2][1]) / 2
-        x_min = min(bbox[0][0], bbox[3][0])
-        items.append({"text": text, "y": y_center, "x": x_min})
-        
-    items.sort(key=lambda item: (item['y'], item['x']))
-    
-    lines = []
-    current_line = [items[0]]
-    
-    for item in items[1:]:
-        if abs(item['y'] - current_line[0]['y']) <= y_tolerance:
-            current_line.append(item)
-        else:
-            current_line.sort(key=lambda x: x['x'])
-            lines.append("   ".join([x['text'] for x in current_line]))
-            current_line = [item]
-            
-    if current_line:
-        current_line.sort(key=lambda x: x['x'])
-        lines.append("   ".join([x['text'] for x in current_line]))
-        
-    return "\n".join(lines)
+    try:
+        image_b64 = base64.b64encode(page_image_bytes).decode("utf-8")
+        response = groq_client.chat.completions.create(
+            model=OCR_MODEL,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{image_b64}"},
+                        },
+                        {
+                            "type": "text",
+                            "text": (
+                                "Extract ALL text from this medical document image exactly as it appears. "
+                                "Preserve the layout with line breaks. "
+                                "Return only the raw extracted text, no commentary."
+                            ),
+                        },
+                    ],
+                }
+            ],
+            max_tokens=4096,
+        )
+        return response.choices[0].message.content or ""
+    except Exception as e:
+        print(f"Groq OCR error: {e}")
+        return ""
 
 class ChatRequest(BaseModel):
     message: str
@@ -285,17 +287,14 @@ async def extract_pdf_text(file: UploadFile = File(...)):
             
             # If empty (less than 50 chars usually implies a scanned image page)
             if len(page_text) < 50:
-                print(f"Page {page_num + 1} appears to be an image. Falling back to EasyOCR...")
+                print(f"Page {page_num + 1} appears to be an image. Falling back to Groq Vision OCR...")
                 try:
-                    pix = page.get_pixmap(matrix=fitz.Matrix(3, 3))  # 🔥 HIGH QUALITY
-                    img = Image.open(io.BytesIO(pix.tobytes("png")))
-                    ocr_results = ocr_reader.readtext(np.array(img))
-                    page_text = group_ocr_text_by_line(ocr_results)
-                    
+                    pix = page.get_pixmap(matrix=fitz.Matrix(3, 3))
+                    page_text = ocr_with_groq(pix.tobytes("png"))
                     if page_text.strip():
-                        print(f"OCR successful for page {page_num + 1}.")
+                        print(f"Groq OCR successful for page {page_num + 1}.")
                     else:
-                        print(f"OCR failed to extract any text for page {page_num + 1}.")
+                        print(f"Groq OCR returned no text for page {page_num + 1}.")
                 except Exception as eval_err:
                     print(f"OCR error on page {page_num+1}: {eval_err}")
             
@@ -332,18 +331,13 @@ async def analyze_report(file: UploadFile = File(...)):
 
             # 2️⃣ OCR fallback
             if len(text) < 50:
-                print("⚠️ Using OCR")
-
-                pix = page.get_pixmap(matrix=fitz.Matrix(3, 3))  # 🔥 HIGH QUALITY
-                img = Image.open(io.BytesIO(pix.tobytes("png")))
-
-                ocr_results = ocr_reader.readtext(np.array(img))
-                text = group_ocr_text_by_line(ocr_results)
-
+                print("⚠️ Using Groq Vision OCR")
+                pix = page.get_pixmap(matrix=fitz.Matrix(3, 3))
+                text = ocr_with_groq(pix.tobytes("png"))
                 if text.strip():
-                    print("✅ OCR Success")
+                    print("✅ Groq OCR Success")
                 else:
-                    print("❌ OCR Failed")
+                    print("❌ Groq OCR returned no text")
 
             # Clean text
             text = re.sub(r'\s+', ' ', text)

@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 
+const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || 'http://localhost:8000';
+
 export async function POST(req) {
     try {
         const { message, history } = await req.json();
@@ -9,10 +11,10 @@ export async function POST(req) {
         }
 
         console.log("Received message:", message);
-        console.log("Forwarding to Python backend: http://127.0.0.1:8000/chat");
+        console.log("Forwarding to Python backend:", PYTHON_BACKEND_URL);
 
         try {
-            const pythonResponse = await fetch('http://127.0.0.1:8000/chat', {
+            const pythonResponse = await fetch(`${PYTHON_BACKEND_URL}/chat`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
