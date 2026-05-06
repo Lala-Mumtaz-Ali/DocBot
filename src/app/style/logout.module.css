@@ -1,50 +1,97 @@
+
+/* FULL SCREEN CONTAINER */
 .container {
   display: flex;
   justify-content: center;
   align-items: center;
+
   height: 100vh;
-  background: linear-gradient(135deg, #0f172a, #1e293b);
+
+  background: radial-gradient(circle at top, #1a1a2e, #0f0f1a);
+
   color: white;
   font-family: "Poppins", sans-serif;
+
+  position: relative;
+  overflow: hidden;
 }
 
+/* FLOATING GLOW EFFECT */
+.container::before,
+.container::after {
+  content: "";
+  position: absolute;
+  width: 300px;
+  height: 300px;
+
+  background: radial-gradient(circle, #6c5ce7, transparent);
+
+  filter: blur(120px);
+  opacity: 0.6;
+
+  animation: float 8s infinite alternate ease-in-out;
+}
+
+.container::after {
+  background: radial-gradient(circle, #00cec9, transparent);
+  bottom: -80px;
+  right: -80px;
+}
+
+/* CARD */
 .card {
   background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(10px);
-  border-radius: 16px;
+  backdrop-filter: blur(20px);
+
+  border-radius: 18px;
   padding: 40px 50px;
+
   text-align: center;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+
+  border: 1px solid rgba(255, 255, 255, 0.08);
+
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
+
   animation: fadeIn 0.8s ease-in-out;
+  z-index: 2;
 }
 
+/* TITLE */
 .title {
   font-size: 1.8rem;
   font-weight: 600;
+
   margin-bottom: 10px;
-  color: #f8fafc;
-  background:rgba(255, 255, 255, 0.05) ;
+
+  background: linear-gradient(90deg, #6c5ce7, #00cec9);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
+/* TEXT */
 .text {
-  color: #cbd5e1;
+  color: #bbb;
   font-size: 1rem;
   margin-bottom: 25px;
 }
-.p{
-    background: rgba(255, 255, 255, 0.05) ;
-}
 
+/* LOADER */
 .loader {
-  width: 40px;
-  height: 40px;
-  border: 4px solid rgba(255, 255, 255, 0.3);
-  border-top-color: #38bdf8;
+  width: 50px;
+  height: 50px;
+
+  border: 4px solid rgba(255, 255, 255, 0.15);
+  border-top-color: #6c5ce7;
+  border-right-color: #00cec9;
+
   border-radius: 50%;
+
   margin: 0 auto;
+
   animation: spin 1s linear infinite;
 }
 
+/* ANIMATIONS */
 @keyframes spin {
   to {
     transform: rotate(360deg);
@@ -59,5 +106,14 @@
   to {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+@keyframes float {
+  from {
+    transform: translateY(0px);
+  }
+  to {
+    transform: translateY(-40px);
   }
 }

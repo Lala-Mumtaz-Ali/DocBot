@@ -1,107 +1,101 @@
+/* NAVBAR */
 .navbar {
-  width: 90%; /* Added to take full screen width */
+  width: 90%;
+  margin: 15px auto;
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 14px 28px;
-  background: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(8px);
-  color: darkcyan;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+
+  /* GLASS EFFECT */
+  background: rgba(20, 20, 35, 0.6);
+  backdrop-filter: blur(20px);
+
+  color: #fff;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+
   position: sticky;
-  top: 0;
+  top: 10px;
   z-index: 100;
-  transition: background 0.3s ease, box-shadow 0.3s ease;
+
+  transition: 0.3s ease;
 }
 
 .navbar:hover {
-  background: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
-}
-
-.navbarBrand {
-  font-size: 2rem;
-  font-weight: 700;
-  background: linear-gradient(90deg, darkcyan, teal);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  cursor: pointer;
-  user-select: none;
-  transition: transform 0.3s ease;
-}
-
-.navbarBrand:hover {
-  transform: scale(1.05);
-}
-
-.navMenu {
-  display: flex;
-  gap: 18px;
-  align-items: center;
-  transition: all 0.3s ease;
-}
-
-.navItem {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: none;
-  border: none;
-  outline: none;
-  color: #222;
-  font-size: 1rem;
-  font-weight: 500;
-  cursor: pointer;
-  padding: 8px 14px;
-  border-radius: 10px;
-  transition: 
-    background 0.3s ease,
-    color 0.3s ease,
-    transform 0.2s ease,
-    box-shadow 0.2s ease;
-}
-
-.navItem:hover {
-  background: #e8f6f6;
-  color: darkcyan;
   transform: translateY(-2px);
 }
 
-.navItem:active,
-.navItem:focus {
-  color: darkcyan;
-  transform: scale(0.96);
-  box-shadow: 0 2px 8px rgba(0, 128, 128, 0.2);
+/* BRAND */
+.navbarBrand {
+  font-size: 1.8rem;
+  font-weight: 700;
+
+  background: linear-gradient(90deg, #6c5ce7, #00cec9);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+
+  cursor: pointer;
 }
 
+/* MENU */
+.navMenu {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+/* NAV ITEM */
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  background: transparent;
+  border: none;
+  color: #bbb;
+
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+
+  padding: 8px 14px;
+  border-radius: 10px;
+
+  transition: 0.3s;
+}
+
+/* HOVER */
+.navItem:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ACTIVE */
 .active {
-  color: darkcyan;
-  font-weight: 600;
-  background: #f0fafa;
+  color: #fff;
+  background: linear-gradient(135deg, #6c5ce7, #00cec9);
 }
 
+/* HAMBURGER */
 .hamburger {
   display: none;
   flex-direction: column;
-  justify-content: center;
-  width: 28px;
-  height: 24px;
-  background: none;
-  border: none;
-  cursor: pointer;
   gap: 5px;
-  padding: 0;
-  transition: transform 0.3s ease;
+  cursor: pointer;
 }
 
 .hamburger span {
-  width: 100%;
+  width: 25px;
   height: 3px;
-  background-color: darkcyan;
+  background: #fff;
   border-radius: 3px;
-  transition: all 0.3s ease;
+  transition: 0.3s;
 }
 
+/* ANIMATION */
 .hamburger.active span:nth-child(1) {
   transform: rotate(45deg) translate(5px, 5px);
 }
@@ -112,42 +106,55 @@
   transform: rotate(-45deg) translate(6px, -6px);
 }
 
+/* MOBILE MENU */
 @media (max-width: 900px) {
   .navMenu {
     position: fixed;
-    top: 70px;
+    top: 80px;
     right: -260px;
+
     flex-direction: column;
     align-items: flex-start;
-    background-color: white;
+
     width: 220px;
-    height: calc(100vh - 70px);
-    padding: 24px;
-    gap: 14px;
-    box-shadow: -4px 0 16px rgba(0, 0, 0, 0.1);
-    border-top-left-radius: 16px;
-    border-bottom-left-radius: 16px;
-    transition: right 0.35s ease-in-out;
-    z-index: 200;
+    height: calc(100vh - 80px);
+    padding: 20px;
+    gap: 12px;
+
+    background: rgba(20, 20, 35, 0.9);
+    backdrop-filter: blur(20px);
+
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: -5px 0 20px rgba(0, 0, 0, 0.6);
+
+    transition: right 0.35s ease;
   }
 
   .navMenu.open {
     right: 0;
   }
 
-  .hamburger {
-    display: flex;
-  }
-
   .navItem {
     width: 100%;
     justify-content: flex-start;
   }
+
+  .hamburger {
+    display: flex;
+    color: white;
+    background: transparent;
+  }
 }
 
+/* SMALL MOBILE */
 @media (max-width: 480px) {
+  .navbar {
+    width: 95%;
+    padding: 12px 16px;
+  }
+
   .navbarBrand {
-    font-size: 1.7rem;
+    font-size: 1.5rem;
   }
 
   .navMenu {

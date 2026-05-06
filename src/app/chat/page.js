@@ -7,6 +7,7 @@ import styles from '../style/chat.module.css';
 import Navbar from '../_components/navbar';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import Footer from '../_components/aboutus';
 
 export default function ChatPage() {
     // State now uses unique IDs for messages
@@ -132,7 +133,8 @@ export default function ChatPage() {
     };
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', backgroundColor: '#f0f2f5' }}>
+        <>
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'linear-gradient(135deg, #0f0f1a, #1a1a2e, #0f3460)' }}>
             <Navbar />
             <div className={styles.container}>
                 <div className={styles.messagesContainer}>
@@ -212,5 +214,7 @@ export default function ChatPage() {
                 </form>
             </div>
         </div>
+        <Footer  />
+        </>
     );
 }

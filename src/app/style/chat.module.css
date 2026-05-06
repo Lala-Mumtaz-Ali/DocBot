@@ -1,34 +1,39 @@
-/* Main Container with Glassmorphism */
+/* ================= BASE CONTAINER ================= */
 .container {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 100px);
+  height: calc(100vh - 80px);
+
   max-width: 900px;
   margin: 20px auto;
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+
   border-radius: 24px;
-  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+
+  background: rgba(15, 15, 25, 0.75);
+  backdrop-filter: blur(20px);
+
+  border: 1px solid rgba(255, 255, 255, 0.08);
+
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+
   overflow: hidden;
-  position: relative;
+
   font-family: "Inter", sans-serif;
 }
 
-/* Messages Area */
+/* ================= MESSAGES AREA ================= */
 .messagesContainer {
   flex: 1;
   overflow-y: auto;
-  padding: 30px;
+
+  padding: 28px;
+
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  scroll-behavior: smooth;
-  background: transparent;
+  gap: 18px;
 }
 
-/* Message Bubbles */
+/* ================= MESSAGE WRAPPER ================= */
 .messageWrapper {
   display: flex;
   gap: 12px;
@@ -36,213 +41,229 @@
   align-items: flex-end;
 }
 
+/* ALIGN USER RIGHT */
 .userMessage {
   align-self: flex-end;
   flex-direction: row-reverse;
 }
 
+/* ALIGN BOT LEFT */
 .botMessage {
   align-self: flex-start;
 }
 
-/* Avatars */
+/* ================= AVATARS ================= */
 .avatar {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
+
   border-radius: 50%;
+
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1rem;
+
+  font-size: 0.95rem;
+
   flex-shrink: 0;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
 }
 
 .userAvatar {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #6c5ce7, #00cec9);
   color: white;
 }
 
 .botAvatar {
-  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+  background: linear-gradient(135deg, #00cec9, #6c5ce7);
   color: white;
 }
 
-/* Message Content */
+/* ================= MESSAGE BOX ================= */
 .messageContent {
   padding: 14px 18px;
+
   border-radius: 18px;
+
   font-size: 0.95rem;
   line-height: 1.6;
-  position: relative;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-  word-wrap: break-word;
+
+  word-break: break-word;
+
+  transition: 0.3s;
+
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+/* USER MESSAGE */
 .userContent {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #6c5ce7, #00cec9);
   color: white;
-  border-bottom-right-radius: 4px;
+
+  border-bottom-right-radius: 5px;
+
+  box-shadow: 0 10px 25px rgba(108, 92, 231, 0.3);
 }
 
+/* BOT MESSAGE */
 .botContent {
-  background: white;
-  color: #2d3748;
-  border-bottom-left-radius: 4px;
-  border: 1px solid rgba(0, 0, 0, 0.05);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e5e7eb;
+
+  border-bottom-left-radius: 5px;
+
+  backdrop-filter: blur(12px);
 }
 
-/* Markdown Styling inside Bot Content */
+/* ================= MARKDOWN ================= */
 .markdownBody p {
-  margin-bottom: 0.8em;
-}
-
-.markdownBody p:last-child {
-  margin-bottom: 0;
-}
-
-.markdownBody h1,
-.markdownBody h2,
-.markdownBody h3 {
-  margin-top: 0.5em;
-  margin-bottom: 0.5em;
-  font-weight: 600;
-}
-
-.markdownBody ul,
-.markdownBody ol {
-  margin-left: 1.5em;
-  margin-bottom: 0.8em;
+  margin-bottom: 0.7em;
 }
 
 .markdownBody strong {
-  color: #1a202c;
-  font-weight: 700;
+  color: #ffffff;
 }
 
-/* Input Area */
+/* ================= INPUT AREA ================= */
 .inputArea {
-  padding: 24px;
-  background: rgba(255, 255, 255, 0.9);
-  border-top: 1px solid rgba(0, 0, 0, 0.05);
   display: flex;
   gap: 12px;
   align-items: center;
-  backdrop-filter: blur(5px);
+
+  padding: 18px;
+
+  background: rgba(15, 15, 25, 0.85);
+  backdrop-filter: blur(20px);
+
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+/* INPUT FIELD */
 .input {
   flex: 1;
-  padding: 16px 20px;
-  border: 2px solid #e2e8f0;
+
+  padding: 14px 18px;
+
   border-radius: 30px;
-  font-size: 1rem;
-  transition: all 0.3s ease;
+
+  border: 1px solid rgba(255, 255, 255, 0.08);
+
+  background: rgba(255, 255, 255, 0.05);
+  color: white;
+
   outline: none;
-  background-color: #f7fafc;
-  color: #2d3748;
+
+  font-size: 1rem;
+
+  transition: 0.3s;
+}
+
+.input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
 }
 
 .input:focus {
-  border-color: #667eea;
-  background-color: white;
-  box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+  border-color: #6c5ce7;
+  box-shadow: 0 0 18px rgba(108, 92, 231, 0.4);
 }
 
+/* ================= SEND BUTTON ================= */
 .sendButton {
-  width: 52px;
-  height: 52px;
+  width: 48px;
+  height: 48px;
+
   border-radius: 50%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+
+  background: linear-gradient(135deg, #6c5ce7, #00cec9);
   color: white;
+
   border: none;
-  cursor: pointer;
+
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.2rem;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-  box-shadow: 0 4px 12px rgba(118, 75, 162, 0.3);
+
+  cursor: pointer;
+
+  transition: 0.3s;
 }
 
 .sendButton:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 15px rgba(118, 75, 162, 0.4);
+  box-shadow: 0 0 18px rgba(108, 92, 231, 0.5);
 }
 
 .sendButton:disabled {
-  background: #cbd5e0;
+  background: rgba(255, 255, 255, 0.1);
   cursor: not-allowed;
-  box-shadow: none;
-  transform: none;
 }
 
-/* Loading Animation */
+/* ================= UPLOAD BUTTON ================= */
+.uploadButton {
+  width: 42px;
+  height: 42px;
+
+  border-radius: 50%;
+
+  background: rgba(255, 255, 255, 0.05);
+  color: #aaa;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  cursor: pointer;
+
+  transition: 0.3s;
+}
+
+.uploadButton:hover {
+  background: rgba(108, 92, 231, 0.2);
+  color: white;
+}
+
+/* ================= LOADING ANIMATION ================= */
 .loading {
   display: flex;
   gap: 6px;
-  padding: 4px;
 }
 
 .dot {
   width: 8px;
   height: 8px;
-  background: #a0aec0;
-  border-radius: 50%;
-  animation: bounce 1.4s infinite ease-in-out both;
-}
 
-.dot:nth-child(1) {
-  animation-delay: -0.32s;
+  background: #6c5ce7;
+  border-radius: 50%;
+
+  animation: bounce 1.3s infinite ease-in-out;
 }
 
 .dot:nth-child(2) {
-  animation-delay: -0.16s;
+  animation-delay: 0.2s;
+}
+
+.dot:nth-child(3) {
+  animation-delay: 0.4s;
 }
 
 @keyframes bounce {
-
-  0%,
-  80%,
-  100% {
+  0%, 80%, 100% {
     transform: scale(0);
+    opacity: 0.3;
   }
-
   40% {
     transform: scale(1);
+    opacity: 1;
   }
 }
 
-/* Scrollbar styling */
+/* ================= SCROLLBAR ================= */
 .messagesContainer::-webkit-scrollbar {
   width: 6px;
 }
 
-.messagesContainer::-webkit-scrollbar-track {
-  background: transparent;
-}
-
 .messagesContainer::-webkit-scrollbar-thumb {
-  background: #cbd5e0;
-  border-radius: 3px;
-}
-
-
-.uploadButton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: white;
-  color: #718096;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-}
-
-.uploadButton:hover {
-  background: #edf2f7;
-  color: #4a5568;
+  background: rgba(108, 92, 231, 0.5);
+  border-radius: 10px;
 }

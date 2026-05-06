@@ -4,6 +4,7 @@ import { useState } from "react";
 import { FaBars, FaTimes } from "react-icons/fa";
 import styles from "../style/signnavbar.module.css";
 
+
 const SignNavbar = () => {
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -16,6 +17,7 @@ const SignNavbar = () => {
   };
 
   return (
+    
     <header className={styles.navbar}>
       <div className={styles.navbarBrand}>DocBot</div>
 

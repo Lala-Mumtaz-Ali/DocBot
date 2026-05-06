@@ -1,301 +1,170 @@
-/* ========== Signup Container ========== */
+/* BACKGROUND */
 .signup {
+  min-height: 100vh;
   display: flex;
   justify-content: center;
-  align-items: stretch;
-  max-width: 100%;
-  width: 55em;
-  height: 30em;
-  margin: 4em auto 8rem auto;
-  border-radius: 8px;
-  transition: all 0.5s ease-in;
-  background-color: #fdfdfd;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  align-items: center;
+  background: transparent;
+  position: relative;
   overflow: hidden;
 }
 
-.signup:hover {
-  transform: scale(1.02);
+/* GLOW EFFECT */
+.signup::before,
+.signup::after {
+  content: "";
+  position: absolute;
+  width: 350px;
+  height: 350px;
+  background: transparent;
+  filter: blur(120px);
+  animation: float 8s infinite alternate;
 }
 
-/* ========== Signup Image Section ========== */
-.signupImg {
-  flex: 1;
-  background-image: url("https://thumbs.dreamstime.com/b/medical-report-stethoscope-pen-flat-style-long-shadow-69720354.jpg");
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: cover;
-  border-top-left-radius: 8px;
-  border-bottom-left-radius: 8px;
+.signup::after {
+  background: transparent;
+  right: -100px;
+  bottom: -100px;
 }
 
-/* ========== Signup Form Section ========== */
-.signupForm {
-  flex: 1;
-  background-color: white;
-  border-top-right-radius: 8px;
-  border-bottom-right-radius: 8px;
-  text-align: center;
-  padding: 1.5rem;
-  box-sizing: border-box;
-  overflow-y: auto;
+@keyframes float {
+  from { transform: translateY(0px); }
+  to { transform: translateY(-40px); }
 }
 
-.signupForm h1 {
-  margin-top: 1rem;
-  color: darkcyan;
-  font-size: 1.8rem;
-  background-color: white;
-}
-
-/* ========== Input Wrapper ========== */
-.inputWrapper {
-  text-align: center;
-  margin-top: 1rem;
+/* CARD */
+.signupForm,
+.signinForm {
   width: 100%;
-  box-sizing: border-box;
-  background-color: white;
+  max-width: 420px;
+  padding: 30px;
+  border-radius: 20px;
+  background: transparent;
+  backdrop-filter: blur(20px);
+  /* border: 1px solid rgba(255,255,255,0.1); */
+  /* box-shadow: 0 10px 50px rgba(0,0,0,0.7); */
+  z-index: 2;
+  text-align: center;
 }
 
-/* ✅ Inputs and Select */
+/* TITLE */
+.signupForm h1,
+.signinForm h1 {
+  color: #fff;
+  margin-bottom: 25px;
+  font-size: 24px;
+}
+
+/* FLOATING INPUT GROUP */
+.inputWrapper {
+  position: relative;
+  margin-bottom: 18px;
+}
+
+/* INPUT */
 .inputWrapper input,
 .inputWrapper select {
-  display: block;
-  width: 85%;
-  max-width: 380px;
-  height: 2.2rem;
-  margin: 0.6rem auto;
-  border-radius: 12px;
-  text-align: center;
-  border: 1px solid #ccc;
-  background-color: white;
-  color: darkslategray;
-  transition: all 0.4s ease-in-out;
-  font-size: 0.95rem;
-  box-sizing: border-box;
-}
-
-.inputWrapper input:hover,
-.inputWrapper select:hover,
-.inputWrapper input:focus,
-.inputWrapper select:focus {
-  transform: scale(1.02);
-  border-color: darkcyan;
+  width: 100%;
+  padding: 12px;
+  margin-top: 12px;
+  border-radius: 10px;
+  border: 1px solid #2a2a40;
+  background: transparent;
+  color: #fff;
   outline: none;
+  font-size: 14px;
 }
 
-/* ========== Button ========== */
-.signupForm button {
-  margin-top: 1.8rem;
-  padding: 0.5rem 2rem;
-  font-weight: bold;
-  background-color: darkcyan;
-  font-size: 1.05rem;
-  border-radius: 8px;
-  color: white;
-  border: none;
-  transition: all 0.3s ease-in-out;
-  cursor: pointer;
-  max-width: 200px;
-  width: 70%;
-}
-
-.signupForm button:hover {
-  transform: scale(1.05);
-  background-color: #008b8b;
-}
-
-/* ========== Error Text ========== */
-.inputError {
-  color: red;
-  font-size: 0.7rem;
-  display: block;
-  margin-top: 0.2rem;
-  line-height: 1;
-}
-
-/* ========== Signin Section ========== */
-.signinImg {
-  flex: 1;
-  background-image: url("https://thumbs.dreamstime.com/b/medical-report-stethoscope-pen-flat-style-long-shadow-69720354.jpg");
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: cover;
-  border-top-right-radius: 8px;
-  border-bottom-right-radius: 8px;
-}
-
-.signinForm {
-  flex: 1;
-  background-color: white;
-  border-bottom-left-radius: 8px;
-  border-top-left-radius: 8px;
-  text-align: center;
-  padding: 1.5rem;
-  overflow-y: auto;
-  box-sizing: border-box;
-}
-
-.signinForm h1 {
-  margin-top: 1.2rem;
-  color: darkcyan;
-  background-color: white;
-}
-
-.signinForm .inputWrapper input {
-  display: block;
-  width: 85%;
-  max-width: 380px;
-  height: 2.2rem;
-  margin: 0.8rem auto;
-  border-radius: 12px;
-  text-align: center;
-  border: 1px solid #ccc;
-  background-color: white;
-  color: darkslategray;
-  transition: all 0.4s ease-in-out;
-}
-
-.signinForm button {
-  margin-top: 1.8rem;
-  padding: 0.5rem 2rem;
-  font-weight: bold;
-  background-color: darkcyan;
-  font-size: 1.05rem;
-  border-radius: 8px;
-  color: white;
-  border: none;
-  transition: all 0.3s ease-in-out;
-  cursor: pointer;
-  max-width: 200px;
-  width: 70%;
-}
-
-.signinForm button:hover {
-  transform: scale(1.05);
-  background-color: #008b8b;
-}
-
-.loginButton:disabled {
-  background-color: #b0c4c4;
-  cursor: not-allowed;
-  transform: none;
-}
-.togglePasswordIcon {
-  background: none;
+/* LABEL */
+.inputWrapper label {
   position: absolute;
-  right: 2.5rem;
+  top: 50%;
+  left: 12px;
+  transform: translateY(-50%);
+  color: #888;
+  font-size: 13px;
+  pointer-events: none;
+  transition: 0.3s;
+}
+
+/* FLOAT EFFECT */
+.inputWrapper input:focus + label,
+.inputWrapper input:not(:placeholder-shown) + label,
+.inputWrapper select:focus + label,
+.inputWrapper select:not([value=""]) + label {
+  top: -8px;
+  left: 10px;
+  font-size: 11px;
+  color: #6c5ce7;
+  background: #0f0f1a;
+  padding: 0 5px;
+}
+
+/* BUTTON */
+.signupForm button,
+.signinForm button {
+  width: 100%;
+  padding: 13px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #6c5ce7, #00cec9);
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.signupForm button:hover,
+.signinForm button:hover {
+  box-shadow: 0 0 20px rgba(108, 92, 231, 0.6);
+}
+
+/* DISABLED BUTTON */
+.signupForm button:disabled {
+  background: #444;
+  cursor: not-allowed;
+}
+
+/* ALERT BOX */
+.alertBox {
+  padding: 10px;
+  border-radius: 10px;
+  margin-bottom: 15px;
+  font-size: 13px;
+}
+
+/* ERROR */
+.errorBox {
+  background: rgba(255, 0, 0, 0.1);
+  color: #ff7675;
+}
+
+/* SUCCESS */
+.successBox {
+  background: rgba(0, 255, 150, 0.1);
+  color: #00cec9;
+}
+
+/* PASSWORD ICON */
+.togglePasswordIcon {
+  position: absolute;
+  right: 12px;
   top: 50%;
   transform: translateY(-50%);
   cursor: pointer;
-  font-size: 1rem;
-  user-select: none;
+  color: #aaa;
 }
 
-.togglePasswordIcon:hover {
-  opacity: 0.7;
+/* REMOVE IMAGE (NOT NEEDED ANYMORE) */
+.signupImg,
+.signinImg {
+  display: none;
 }
 
-
-
-/* ========== Responsive Design ========== */
-
-/* Tablets */
-@media (max-width: 1024px) {
-  .signup {
-    flex-direction: column;
-    align-items: center;
-    width: 90%;
-    height: auto;
-    margin: 2em auto;
-    box-shadow: none;
+/* MOBILE */
+@media (max-width: 480px) {
+  .signupForm,
+  .signinForm {
+    padding: 20px;
   }
-
-  .signupImg {
-    display: none;
-  }
-
-  .signupForm {
-    width: 100%;
-    border-radius: 8px;
-  }
-
-  .signupForm h1 {
-    font-size: 1.5rem;
-  }
-
-  .signupForm input,
-  .signupForm select {
-    width: 90%;
-  }
-
-  .signupForm button {
-    width: 80%;
-  }
-}
-
-/* Phones */
-@media (max-width: 600px) {
-  .signup {
-    width: 100%;
-    margin: 1.5em auto;
-    background-color: white;
-  }
-
-  .signupForm {
-    padding: 1rem;
-  }
-
-  .signupForm h1 {
-    font-size: 1.3rem;
-  }
-
-  .signupForm input,
-  .signupForm select {
-    width: 95%;
-    font-size: 0.9rem;
-  }
-
-  .signupForm button {
-    width: 90%;
-    padding: 0.4rem;
-  }
-
-  .inputError {
-    font-size: 0.65rem;
-  }
-
-  .togglePasswordIcon {
-    display: none;
-  }
-}
-.alertBox {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  border-radius: 12px;
-  font-size: 0.95rem;
-  margin-bottom: 15px;
-  font-weight: 500;
-  animation: fadeIn 0.4s ease-in-out;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
-  transition: all 0.3s ease;
-}
-
-.errorBox {
-  background-color: #ffe4e4;
-  color: #b00020;
-  border: 1px solid #ffb3b3;
-}
-
-.successBox {
-  background-color: #e8fbe8;
-  color: #067d0c;
-  border: 1px solid #9be49f;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(-10px); }
-  to { opacity: 1; transform: translateY(0); }
 }
