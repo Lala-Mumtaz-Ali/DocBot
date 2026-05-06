@@ -42,6 +42,10 @@ next-env.d.ts
 
 data/
 
+# Python backend cache
+python_backend/__pycache__/
+python_backend/*.pyc
+
 # ─── Diabetes ML Microservice ───
 # Raw training data (downloaded from Kaggle — do NOT commit)
 diabetes_ml/data/raw/
