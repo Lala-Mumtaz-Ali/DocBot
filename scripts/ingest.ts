@@ -10,12 +10,13 @@ import * as path from 'path';
 import pdfParse from 'pdf-parse';
 import { parseStringPromise } from 'xml2js'; // xml2js library
 import * as dotenv from 'dotenv';
+import { pipeline } from '@xenova/transformers';
 
 // Load environment variables from .env.local
 dotenv.config({ path: '.env.local' });
 
 // --- Configuration ---
-const dataDir = path.resolve(process.cwd(), 'data'); // Root data directory
+const dataDir = path.resolve(process.cwd(), 'data_DocBot_Chat'); // Root data directory
 const subDirsToProcess = ['books', 'medguides', 'medlineplus_xml']; // Specify subdirectories
 const chunkSize = 1000; // Size of text chunks
 const chunkOverlap = 150; // Overlap between chunks
@@ -26,97 +27,55 @@ const VECTOR_INDEX = process.env.MONGODB_VECTOR_INDEX || 'vector_index';
 const TEXT_KEY = process.env.MONGODB_TEXT_KEY || 'text';
 const EMBEDDING_KEY = process.env.MONGODB_EMBEDDING_KEY || 'embedding';
 
-// Minimal Ollama embeddings client compatible with LangChain Embeddings interface
-class OllamaEmbeddings {
-  private model: string;
-  private baseUrl: string;
-  private batchSize: number;
-  private delayMs: number;
-  private requestDelayMs: number;
+// Minimal local embeddings client using Xenova/transformers (runs entirely in JS, no Ollama needed)
+class LocalEmbeddings {
+  private modelName: string;
+  private extractor: any;
 
-  constructor(opts?: { model?: string; baseUrl?: string; batchSize?: number; delayMs?: number; requestDelayMs?: number }) {
-    this.model = opts?.model || process.env.OLLAMA_EMBED_MODEL || 'nomic-embed-text';
-    this.baseUrl = opts?.baseUrl || process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
-    this.batchSize = opts?.batchSize || 10; // Process 10 embeddings at a time (reduced from 50)
-    this.delayMs = opts?.delayMs || 500; // 500ms delay between batches (increased from 100ms)
-    this.requestDelayMs = opts?.requestDelayMs || 200; // 200ms delay between individual requests
+  constructor(opts?: { model?: string }) {
+    this.modelName = opts?.model || 'Xenova/all-MiniLM-L6-v2';
+  }
+
+  private async getExtractor() {
+    if (!this.extractor) {
+      console.log(`Loading local embedding model: ${this.modelName}...`);
+      this.extractor = await pipeline('feature-extraction', this.modelName);
+    }
+    return this.extractor;
   }
 
   async embedDocuments(texts: string[]): Promise<number[][]> {
+    const extractor = await this.getExtractor();
     const results: number[][] = [];
-    const totalBatches = Math.ceil(texts.length / this.batchSize);
-
-    console.log(`Processing ${texts.length} embeddings in ${totalBatches} batches of ${this.batchSize}...`);
-
-    for (let i = 0; i < texts.length; i += this.batchSize) {
-      const batch = texts.slice(i, i + this.batchSize);
-      const batchNum = Math.floor(i / this.batchSize) + 1;
-
-      console.log(`Processing batch ${batchNum}/${totalBatches} (${batch.length} embeddings)...`);
-
-      // Process batch with retry logic
-      for (let j = 0; j < batch.length; j++) {
-        const text = batch[j];
-        let retries = 3;
-        while (retries > 0) {
-          try {
-            const embedding = await this.embed(text);
-            results.push(embedding);
-            break; // Success, exit retry loop
-          } catch (error) {
-            retries--;
-            if (retries === 0) {
-              console.error(`Failed to embed text after 3 retries: "${text.substring(0, 50)}..."`);
-              console.warn("Skipping problematic chunk by inserting zero-vector.");
-              // Return a zero-vector of dimension 768 (standard for nomic-embed-text)
-              // This allows the process to continue even if one chunk fails
-              results.push(new Array(768).fill(0));
-              break;
-            }
-            console.warn(`Retry ${3 - retries}/3 for embedding...`);
-            await this.sleep(2000); // Wait 2 seconds before retry (increased from 1s)
-          }
+    
+    console.log(`Generating embeddings for ${texts.length} chunks...`);
+    
+    const batchSize = 10;
+    const totalBatches = Math.ceil(texts.length / batchSize);
+    
+    for (let i = 0; i < texts.length; i += batchSize) {
+      const batch = texts.slice(i, i + batchSize);
+      console.log(`Processing batch ${Math.floor(i/batchSize) + 1}/${totalBatches}`);
+      
+      try {
+        const outputs = await extractor(batch, { pooling: 'mean', normalize: true });
+        const arr = outputs.tolist();
+        results.push(...arr);
+      } catch (error) {
+        console.error("Error generating embeddings for batch, inserting zero-vectors.");
+        for (let j = 0; j < batch.length; j++) {
+           results.push(new Array(384).fill(0));
         }
-
-        // Add small delay between individual requests within a batch
-        if (j < batch.length - 1) {
-          await this.sleep(this.requestDelayMs);
-        }
-      }
-
-      // Add delay between batches to avoid overwhelming Ollama
-      if (i + this.batchSize < texts.length) {
-        await this.sleep(this.delayMs);
       }
     }
-
-    console.log(`Completed processing ${results.length} embeddings.`);
+    
     return results;
   }
 
   async embedQuery(text: string): Promise<number[]> {
-    return this.embed(text);
-  }
-
-  private async embed(text: string): Promise<number[]> {
-    const res = await fetch(`${this.baseUrl}/api/embeddings`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: this.model, prompt: text }),
-    });
-    if (!res.ok) {
-      const msg = await res.text().catch(() => '');
-      throw new Error(`Ollama embeddings error (${res.status}): ${msg}`);
-    }
-    const data = await res.json();
-    // Ollama returns { embedding: number[] }
-    const embedding: number[] = data?.embedding || data?.data?.[0]?.embedding;
-    if (!embedding) throw new Error('Invalid embeddings response from Ollama');
-    return embedding;
-  }
-
-  private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    const extractor = await this.getExtractor();
+    const output = await extractor(text, { pooling: 'mean', normalize: true });
+    return output.tolist()[0];
   }
 }
 
@@ -244,9 +203,8 @@ async function ingestData() {
     }
 
     // 2. Initialize Embeddings Model and Text Splitter
-    const embeddings = new OllamaEmbeddings({
-      model: process.env.OLLAMA_EMBED_MODEL, // e.g., 'nomic-embed-text' or 'all-minilm'
-      baseUrl: process.env.OLLAMA_BASE_URL,   // default http://localhost:11434
+    const embeddings = new LocalEmbeddings({
+      model: 'Xenova/all-MiniLM-L6-v2', // Matches the Python backend dimensions (384)
     });
 
     const textSplitter = new RecursiveCharacterTextSplitter({
@@ -257,7 +215,7 @@ async function ingestData() {
 
     // 3. Process Files
     const documents: Document[] = [];
-    console.log(`Using embedding model: ${embeddings['model']}`);
+    console.log(`Using embedding model: Xenova/all-MiniLM-L6-v2`);
     console.log(`Reading files from specified subdirectories in: ${dataDir}`);
 
     for (const subDir of subDirsToProcess) {

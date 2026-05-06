@@ -9,3 +9,5 @@ python-multipart
 pypdf
 pymupdf
 pillow
+groq
+sentence-transformers

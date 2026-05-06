@@ -36,7 +36,7 @@ export async function POST(req) {
             if (data.debug_info) {
                 console.log("\n--- RETRIEVAL DEBUG INFO (from Python) ---");
                 data.debug_info.forEach((item, index) => {
-                    console.log(`Doc ${index + 1}: Score=${item.score} | Source=${item.source}`);
+                    console.log(`Doc ${index + 1}: Score=${item.bert_score?.toFixed(4) ?? 'N/A'} | Source=${item.source || 'Unknown'}`);
                     console.log(`Preview: ${item.content}...`);
                 });
                 console.log("------------------------------------------\n");
