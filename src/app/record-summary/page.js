@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import Navbar from '../_components/Navbar'
+import Navbar from '../_components/navbar'
 import ReactMarkdown from 'react-markdown'
 import styles from '../style/recordSummary.module.css'
 

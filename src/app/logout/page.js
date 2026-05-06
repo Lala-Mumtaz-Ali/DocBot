@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import styles from "../style/Logout.module.css"; // ✅ new CSS module
+import styles from "../style/logout.module.css"; // ✅ new CSS module
 
 export default function LogoutPage() {
   const router = useRouter();
