@@ -57,7 +57,7 @@ groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 # ============================
 # GROQ VISION OCR
 # ============================
-OCR_MODEL = "llama-3.2-11b-vision-preview"
+OCR_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 
 def ocr_with_groq(page_image_bytes: bytes) -> str:
     """Extract text from a scanned page image using Groq vision model."""
