@@ -36,8 +36,14 @@ MODEL_PATH    = os.path.join(os.path.dirname(__file__), "models", "xgboost_model
 FORECAST_PATH = os.path.join(os.path.dirname(__file__), "models", "xgboost_forecast.pkl")
 
 model = None
+classifier_features = None
 try:
-    model = joblib.load(MODEL_PATH)
+    loaded = joblib.load(MODEL_PATH)
+    if isinstance(loaded, dict) and "model" in loaded:
+        model               = loaded["model"]
+        classifier_features = loaded.get("feature_order")
+    else:
+        model = loaded
     print(f"SUCCESS: XGBoost classifier loaded from {MODEL_PATH}")
 except FileNotFoundError:
     print(
@@ -178,14 +184,21 @@ def predict_risk(reports: List[ReportEntry]):
     # Engineer features
     features = engineer_features(reports_sorted)
 
-    # Build feature vector in same order as training
-    FEATURE_ORDER = [
+    # Build feature vector in same order as training. Prefer the order saved in
+    # the model bundle, falling back to a legacy hard-coded list for older .pkl files.
+    feature_order = classifier_features or [
         "hba1c", "fasting_glucose",
         "hba1c_delta_1", "days_since_prev1", "velocity_1",
-        "hba1c_delta_2", "velocity_2",
-        "acceleration", "projected_hba1c"
+        "hba1c_delta_2", "days_since_prev2", "velocity_2",
+        "acceleration", "projected_hba1c",
     ]
-    X = np.array([[features[f] for f in FEATURE_ORDER]], dtype=np.float32)
+    # Engineered features may not include every feature the model was trained
+    # on (e.g. old saved models without `days_since_prev2`). Default missing
+    # columns to 0.0 so the predict call doesn't blow up.
+    X = np.array(
+        [[features.get(f, 0.0) for f in feature_order]],
+        dtype=np.float32,
+    )
 
     # Predict
     risk_score = int(model.predict(X)[0])
