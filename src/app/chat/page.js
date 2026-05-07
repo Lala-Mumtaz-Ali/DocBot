@@ -20,14 +20,13 @@ export default function ChatPage() {
     ]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const messagesEndRef = useRef(null);
-
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    };
+    const messagesContainerRef = useRef(null);
 
     useEffect(() => {
-        scrollToBottom();
+        const el = messagesContainerRef.current;
+        if (el) {
+            el.scrollTop = el.scrollHeight;
+        }
     }, [messages, isLoading]);
 
     const sendMessage = async (e) => {
@@ -134,10 +133,10 @@ export default function ChatPage() {
 
     return (
         <>
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'linear-gradient(135deg, #0f0f1a, #1a1a2e, #0f3460)' }}>
+        <div className={styles.chatWrapper}>
             <Navbar />
             <div className={styles.container}>
-                <div className={styles.messagesContainer}>
+                <div className={styles.messagesContainer} ref={messagesContainerRef}>
                     <AnimatePresence>
                         {messages.map((msg) => (
                             !msg.hidden && (
@@ -186,7 +185,6 @@ export default function ChatPage() {
                             </div>
                         </motion.div>
                     )}
-                    <div ref={messagesEndRef} />
                 </div>
 
                 <form onSubmit={sendMessage} className={styles.inputArea}>
