@@ -98,32 +98,110 @@ class ChatRequest(BaseModel):
     message: str
     history: list[dict] = []
 
+
+# A small, fast model for the rewrite step. Falls back to the main GEN_MODEL
+# if the user has not overridden it.
+CONDENSE_MODEL = os.getenv("CONDENSE_MODEL", "llama-3.1-8b-instant")
+
+
+def _normalize_history(history: list[dict]) -> list[dict]:
+    """Filter out hidden context messages and map roles to 'user'/'assistant'."""
+    out = []
+    for msg in history or []:
+        if msg.get("hidden"):
+            continue
+        role = msg.get("role", "user")
+        content = (msg.get("content") or "").strip()
+        if not content:
+            continue
+        if role in ("bot", "model", "assistant"):
+            role = "assistant"
+        elif role != "system":
+            role = "user"
+        out.append({"role": role, "content": content})
+    return out
+
+
+def condense_question(history: list[dict], message: str) -> str:
+    """
+    Rewrite a follow-up question into a standalone query using the conversation
+    history. This is the standard "Conversational RAG" pattern: it lets the
+    retriever see the resolved question (e.g. "explain them" -> "explain Type 1,
+    Type 2, and Gestational diabetes") so vector search can actually find
+    relevant chunks.
+
+    Returns the original message unchanged if there is no history, no LLM
+    available, or the rewrite fails.
+    """
+    history = _normalize_history(history)
+    if not history or not groq_client:
+        return message
+
+    convo = "\n".join(f"{m['role'].upper()}: {m['content']}" for m in history[-6:])
+    rewrite_prompt = (
+        "You rewrite follow-up messages from a medical chat into a single, "
+        "self-contained question that a search engine can use without seeing "
+        "the prior conversation.\n\n"
+        "Rules:\n"
+        "- Resolve pronouns and references (\"them\", \"it\", \"that\") using the conversation.\n"
+        "- Keep the user's original intent and medical terminology exactly.\n"
+        "- Do NOT answer the question.\n"
+        "- If the message is already standalone, return it unchanged.\n"
+        "- Output ONLY the rewritten question, no quotes, no preamble.\n\n"
+        f"Conversation so far:\n{convo}\n\n"
+        f"Follow-up message: {message}\n\n"
+        "Standalone question:"
+    )
+
+    try:
+        response = groq_client.chat.completions.create(
+            messages=[{"role": "user", "content": rewrite_prompt}],
+            model=CONDENSE_MODEL,
+            temperature=0.0,
+            max_tokens=200,
+        )
+        rewritten = (response.choices[0].message.content or "").strip()
+        rewritten = rewritten.strip('"').strip("'").strip()
+        # Sanity guard: if the model returned an empty string or echoed back
+        # an obvious refusal, keep the original message.
+        if not rewritten or len(rewritten) > 500:
+            return message
+        return rewritten
+    except Exception as e:
+        print(f"Query condensation failed: {e}")
+        return message
+
+
 def generate_deepseek_response(context, question, history):
     if not groq_client:
         return "Error: GROQ_API_KEY is not configured."
 
     messages = []
-    
-    # System Prompt
-    system_prompt = """You are a helpful medical assistant. Answer the user's question using the provided medical context. 
-If the answer is not in the context, say "I don't know based on the provided information." and suggest seeing a doctor.
-Do not hallucinate. Keep the answer concise."""
+
+    # System Prompt — context is primary, but history is allowed for resolving
+    # follow-up references and continuing previously-grounded discussions.
+    system_prompt = (
+        "You are DocBot, a friendly and concise medical assistant.\n\n"
+        "You have two information sources:\n"
+        "1. RETRIEVED CONTEXT: medical text chunks fetched for the current question. "
+        "Treat these as your primary source of factual claims.\n"
+        "2. CONVERSATION HISTORY: prior turns in this chat. Use them to understand "
+        "follow-up questions, pronouns, and references (e.g. \"explain them\", \"what about that?\").\n\n"
+        "Rules:\n"
+        "- If the user is following up on something you already answered, continue that thread.\n"
+        "- Prefer facts from the retrieved context. If the context contradicts something "
+        "you said earlier, trust the context.\n"
+        "- If neither the context nor the conversation gives you a confident answer, say "
+        "\"I don't have enough information to answer that. Please consult a doctor.\"\n"
+        "- Do not invent facts or cite sources you weren't given.\n"
+        "- Keep answers clear and concise."
+    )
     
     messages.append({"role": "system", "content": system_prompt})
 
-    # Add Conversation History
-    for msg in history:
-        role = msg.get("role", "user")
-        content = msg.get("content", "")
-        # Skip hidden context messages injected by PDF uploads
-        if msg.get("hidden"):
-            continue
-        # Map frontend roles to Groq-compatible roles
-        if role in ("bot", "model", "assistant"):
-            role = "assistant"
-        elif role != "system":
-            role = "user"
-        messages.append({"role": role, "content": content})
+    # Add Conversation History (normalized — hidden messages dropped, roles mapped)
+    for msg in _normalize_history(history):
+        messages.append(msg)
 
     # Add Current Context and Question as User Message
     user_input = f"Context:\n{context}\n\nQuestion: {question}"
@@ -159,9 +237,19 @@ def chat(request: ChatRequest):
     print(f"Step 1: User Input -> '{user_message}'")
 
     try:
-        # 1. Generate Embedding
+        # 1a. Condense follow-up into a standalone retrieval query.
+        # The retriever is stateless, so "explain them" embeds to nothing useful.
+        # We rewrite using the conversation history before searching.
+        print("\nStep 1b: Conversational Query Rewrite")
+        retrieval_query = condense_question(history, user_message)
+        if retrieval_query != user_message:
+            print(f"   Rewritten for retrieval: '{retrieval_query}'")
+        else:
+            print("   No rewrite needed (no history or already standalone).")
+
+        # 1. Generate Embedding (uses the condensed query)
         print("\nStep 2: Embedding Generation (Ollama)")
-        query_embedding = ollama.embed_query(user_message)
+        query_embedding = ollama.embed_query(retrieval_query)
         print(f"   Action: Generated query vector ({len(query_embedding)} dims).")
 
         # 2. Vector Search (MongoDB Atlas)
@@ -219,8 +307,9 @@ def chat(request: ChatRequest):
             if not text:
                 continue
             # Use BioBERT to check if this chunk answers the question
-            # We use the confidence score as a relevance metric
-            qa_result = qa_pipeline(question=user_message, context=text)
+            # We use the confidence score as a relevance metric.
+            # Use the condensed retrieval query so reranking sees resolved references.
+            qa_result = qa_pipeline(question=retrieval_query, context=text)
             bert_score = qa_result["score"]
             
             source = get_source(doc)
@@ -266,7 +355,8 @@ def chat(request: ChatRequest):
         return {
             "reply": final_answer,
             "sources": [c["source"] for c in top_k],
-            "debug_info": debug_info
+            "debug_info": debug_info,
+            "retrieval_query": retrieval_query,
         }
 
     except Exception as e:
