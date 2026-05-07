@@ -88,39 +88,52 @@ export async function POST(req) {
       );
     }
 
-    // ── 2. Call ML Microservice for risk score ──
+    // ── 2. Call ML Microservice for risk score + forecast (parallel) ──
     const mlPayload = reports.map((r) => ({
       report_date: r.report_date,
       hba1c: r.hba1c ?? 0,
       fasting_glucose: r.fasting_glucose ?? 0,
     }));
 
+    const FORECAST_HORIZON_DAYS = 90;
+
     let riskScore = 0;
     let riskLabel = "Stable";
     let mlFeatures = {};
+    let forecast = null;  // { predicted_hba1c, current_hba1c, delta_predicted, horizon_days, projected_zone }
 
-    try {
-      const mlRes = await fetch(`${ML_SERVICE_URL}/predict-risk`, {
+    const [riskRes, forecastRes] = await Promise.allSettled([
+      fetch(`${ML_SERVICE_URL}/predict-risk`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(mlPayload),
-      });
+      }),
+      fetch(`${ML_SERVICE_URL}/predict-forecast`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reports: mlPayload, horizon_days: FORECAST_HORIZON_DAYS }),
+      }),
+    ]);
 
-      if (mlRes.ok) {
-        const mlData = await mlRes.json();
-        riskScore = mlData.risk_score ?? 0;
-        riskLabel = mlData.risk_label ?? "Stable";
-        mlFeatures = mlData.features_used ?? {};
-      } else {
-        console.warn("⚠️  ML service returned non-OK:", mlRes.status);
-      }
-    } catch (mlErr) {
-      console.warn("⚠️  ML service unreachable:", mlErr.message);
-      // Degrade gracefully: compute a simple rule-based score
+    // Risk score
+    if (riskRes.status === "fulfilled" && riskRes.value.ok) {
+      const mlData = await riskRes.value.json();
+      riskScore = mlData.risk_score ?? 0;
+      riskLabel = mlData.risk_label ?? "Stable";
+      mlFeatures = mlData.features_used ?? {};
+    } else {
+      console.warn("⚠️  Risk endpoint unreachable, falling back to threshold rule");
       const latest = reports[reports.length - 1];
       const hba1c = latest.hba1c ?? 0;
       riskScore = hba1c < 6.5 ? 0 : hba1c < 8.0 ? 1 : 2;
       riskLabel = ["Stable", "Moderate Risk", "Rapid Deterioration"][riskScore];
+    }
+
+    // Forecast
+    if (forecastRes.status === "fulfilled" && forecastRes.value.ok) {
+      forecast = await forecastRes.value.json();
+    } else {
+      console.warn("⚠️  Forecast endpoint unreachable, skipping prediction");
     }
     // ── 3. Build LLM synthesis prompt ──
     const trendTable    = buildTrendTable(reports);
@@ -145,6 +158,12 @@ export async function POST(req) {
                           ? "IMPROVING (HbA1c is decreasing)"
                           : "FLAT (no change detected)";
 
+    // Forecast facts for the LLM (only included if the regressor returned a value)
+    const forecastBlock = forecast
+      ? `- Predicted HbA1c in ${forecast.horizon_days} days: ${forecast.predicted_hba1c}% (projected zone: ${forecast.projected_zone})
+- Predicted change from now: ${forecast.delta_predicted >= 0 ? "+" : ""}${forecast.delta_predicted.toFixed(2)}%`
+      : "- Predicted future HbA1c: unavailable";
+
     const synthesisPrompt = `You are DOCBOT, a friendly medical AI assistant explaining diabetes lab results to a patient in simple, clear language.
 
 === PATIENT LAB DATA (CHRONOLOGICAL) ===
@@ -156,7 +175,8 @@ ${trendTable}
 - Short-term HbA1c Change: ${delta1}
 - Trend Direction: ${trendDirection}
 - Acceleration: ${accel} (positive = worsening is speeding up, negative = worsening is slowing down)
-- Overall Risk Score: ${riskScore}/2 → "${riskLabel}" ${riskEmoji}
+- Overall Risk Score: ${riskScore}/2 -> "${riskLabel}" ${riskEmoji}
+${forecastBlock}
 
 === YOUR TASK ===
 Write a short, warm, patient-friendly explanation in plain English. Follow this EXACT structure:
@@ -167,11 +187,11 @@ Write a short, warm, patient-friendly explanation in plain English. Follow this 
 
 **What This Means:** In 1-2 sentences, explain if this is good or bad. CRITICAL: an INCREASE in HbA1c or Glucose is ALWAYS a bad sign — say so clearly. A DECREASE is always good — say so positively.
 
-**Our Prediction:** In 1-2 sentences, state what the ML model predicts will happen next based on the risk score (${riskLabel}).
+**Our Prediction:** In 1-2 sentences, state the predicted HbA1c value at the ${forecast ? forecast.horizon_days + "-day" : "90-day"} horizon and what that means (using the "Predicted HbA1c" number above if available, otherwise the risk score). Use the exact predicted number — do NOT make up a different number.
 
 **Action:** One sentence advising them to consult their doctor.
 
-Keep the total response under 180 words. Write in second person ("you / your"). Do NOT include any <think> tags or reasoning steps.
+Keep the total response under 200 words. Write in second person ("you / your"). Do NOT include any <think> tags or reasoning steps.
 
 DOCBOT response:`;
 
@@ -190,6 +210,7 @@ DOCBOT response:`;
       userId,
       risk_score: riskScore,
       risk_label: riskLabel,
+      forecast,           // { predicted_hba1c, current_hba1c, delta_predicted, horizon_days, projected_zone } | null
       analysis,
       reports: reports.map((r) => ({
         report_date: r.report_date,

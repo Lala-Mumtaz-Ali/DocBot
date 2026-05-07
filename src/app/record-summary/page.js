@@ -325,6 +325,34 @@ export default function RecordSummaryPage() {
             </div>
           )}
 
+          {/* Forecast Card */}
+          {historyResult.forecast && (() => {
+            const f = historyResult.forecast
+            const zoneClass =
+              f.projected_zone === "Diabetic"     ? styles.rapid    :
+              f.projected_zone === "Pre-diabetic" ? styles.moderate :
+                                                    styles.stable
+            const arrow =
+              f.delta_predicted > 0.05  ? "↑" :
+              f.delta_predicted < -0.05 ? "↓" : "→"
+            const deltaText =
+              f.delta_predicted > 0  ? `+${f.delta_predicted.toFixed(2)}%` :
+                                       `${f.delta_predicted.toFixed(2)}%`
+            return (
+              <div className={`${styles.riskBadge} ${zoneClass}`} style={{ marginTop: '1rem' }}>
+                <span className={styles.riskEmoji}>🔮</span>
+                <div className={styles.riskInfo}>
+                  <h3>
+                    Predicted HbA1c in {f.horizon_days} days: {f.predicted_hba1c}% {arrow}
+                  </h3>
+                  <p>
+                    {deltaText} from current {f.current_hba1c}% — projected zone: <strong>{f.projected_zone}</strong>
+                  </p>
+                </div>
+              </div>
+            )
+          })()}
+
           {/* HbA1c trend chart */}
           {historyResult.reports?.length >= 2 && (
             <div className={styles.chartWrapper}>

@@ -30,18 +30,33 @@ app.add_middleware(
 )
 
 # ─────────────────────────────────────────────────────────────
-# LOAD MODEL (at startup)
+# LOAD MODELS (at startup)
 # ─────────────────────────────────────────────────────────────
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "xgboost_model.pkl")
+MODEL_PATH    = os.path.join(os.path.dirname(__file__), "models", "xgboost_model.pkl")
+FORECAST_PATH = os.path.join(os.path.dirname(__file__), "models", "xgboost_forecast.pkl")
 
 model = None
 try:
     model = joblib.load(MODEL_PATH)
-    print(f"SUCCESS: XGBoost model loaded from {MODEL_PATH}")
+    print(f"SUCCESS: XGBoost classifier loaded from {MODEL_PATH}")
 except FileNotFoundError:
     print(
-        f"WARNING: Model not found at {MODEL_PATH}.\n"
+        f"WARNING: Classifier not found at {MODEL_PATH}.\n"
         "    Run 'python train_model.py' first to generate the model file."
+    )
+
+forecast_bundle = None
+forecast_model = None
+forecast_features = None
+try:
+    forecast_bundle = joblib.load(FORECAST_PATH)
+    forecast_model    = forecast_bundle["model"]
+    forecast_features = forecast_bundle["feature_order"]
+    print(f"SUCCESS: XGBoost forecast regressor loaded from {FORECAST_PATH}")
+except FileNotFoundError:
+    print(
+        f"WARNING: Forecast model not found at {FORECAST_PATH}.\n"
+        "    Run 'python train_forecast_model.py' first to enable /predict-forecast."
     )
 
 # ─────────────────────────────────────────────────────────────
@@ -187,4 +202,72 @@ def predict_risk(reports: List[ReportEntry]):
         risk_label=risk_label,
         features_used=features,
         note=note,
+    )
+
+
+# ─────────────────────────────────────────────────────────────
+# FORECAST ENDPOINT — predict the patient's HbA1c at a future horizon
+# ─────────────────────────────────────────────────────────────
+class PredictForecastRequest(BaseModel):
+    reports: List[ReportEntry]
+    horizon_days: int = 90      # forecast window in days
+
+
+class PredictForecastResponse(BaseModel):
+    predicted_hba1c: float
+    current_hba1c: float
+    delta_predicted: float       # predicted_hba1c - current_hba1c
+    horizon_days: int
+    projected_zone: str          # "Normal" | "Pre-diabetic" | "Diabetic"
+    features_used: dict
+
+
+def _classify_zone(hba1c: float) -> str:
+    if hba1c >= 6.5:
+        return "Diabetic"
+    if hba1c >= 5.7:
+        return "Pre-diabetic"
+    return "Normal"
+
+
+@app.post("/predict-forecast", response_model=PredictForecastResponse)
+def predict_forecast(payload: PredictForecastRequest):
+    """
+    Predict the patient's HbA1c value `horizon_days` from the most recent report.
+    Uses an XGBoost regressor trained on longitudinal FHIR data.
+    """
+    if not payload.reports:
+        raise HTTPException(status_code=422, detail="At least one report is required.")
+
+    if forecast_model is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Forecast model is not loaded. Run 'python train_forecast_model.py' first.",
+        )
+
+    horizon = max(1, int(payload.horizon_days))
+
+    try:
+        reports_sorted = sorted(payload.reports, key=lambda r: datetime.fromisoformat(r.report_date))
+    except ValueError:
+        reports_sorted = payload.reports
+
+    features = engineer_features(reports_sorted)
+    # Re-project using the requested horizon (engineer_features hardcodes 90)
+    features["projected_hba1c"] = round(features["hba1c"] + features["velocity_1"] * horizon, 4)
+    features["days_to_next"]    = horizon
+
+    X = np.array([[features[f] for f in forecast_features]], dtype=np.float32)
+    predicted = float(forecast_model.predict(X)[0])
+
+    # Clamp to a clinically plausible range
+    predicted = max(3.5, min(15.0, predicted))
+
+    return PredictForecastResponse(
+        predicted_hba1c=round(predicted, 2),
+        current_hba1c=round(features["hba1c"], 2),
+        delta_predicted=round(predicted - features["hba1c"], 2),
+        horizon_days=horizon,
+        projected_zone=_classify_zone(predicted),
+        features_used=features,
     )
