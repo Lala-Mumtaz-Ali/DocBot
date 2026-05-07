@@ -1,4 +1,4 @@
-.container {
+/* .container {
   min-height: 100vh;
   display: flex;
   justify-content: center;
@@ -79,5 +79,152 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+} */
+ /* BACKGROUND */
+.container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+      background: linear-gradient(135deg, #0f0f1a, #1a1a2e,#0f3460);
+
+  overflow: hidden;
+  position: relative;
+}
+
+/* Animated glowing blobs */
+.container::before,
+.container::after {
+  content: "";
+  position: absolute;
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(circle, #6c5ce7, transparent);
+  filter: blur(120px);
+  animation: float 8s infinite alternate;
+}
+
+.container::after {
+  background: radial-gradient(circle, #00cec9, transparent);
+  right: -100px;
+  bottom: -100px;
+}
+
+@keyframes float {
+  from { transform: translateY(0px); }
+  to { transform: translateY(-40px); }
+}
+
+/* CARD */
+.card {
+  width: 100%;
+  max-width: 420px;
+  padding: 30px;
+  border-radius: 20px;
+  background: rgba(20, 20, 35, 0.6);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.1);
+  box-shadow: 0 10px 50px rgba(0,0,0,0.7);
+  z-index: 2;
+}
+
+/* TITLE */
+.title {
+  text-align: center;
+  color: #fff;
+  margin-bottom: 25px;
+  font-size: 24px;
+}
+
+/* FLOATING INPUT GROUP */
+.group {
+  position: relative;
+  margin-bottom: 18px;
+}
+
+.group input {
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid #2a2a40;
+  background: transparent;
+  color: #fff;
+  outline: none;
+}
+
+.group label {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  transform: translateY(-50%);
+  color: #888;
+  font-size: 13px;
+  pointer-events: none;
+  transition: 0.3s;
+}
+
+/* FLOAT EFFECT */
+.group input:focus + label,
+.group input:not(:placeholder-shown) + label {
+  top: -8px;
+  left: 10px;
+  font-size: 11px;
+  color: #6c5ce7;
+  background: #0f0f1a;
+  padding: 0 5px;
+}
+
+/* SELECT */
+.select {
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  background: #121222;
+  color: #fff;
+  border: 1px solid #2a2a40;
+  margin-bottom: 18px;
+}
+
+/* BUTTON */
+.button {
+  width: 100%;
+  padding: 13px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #6c5ce7, #00cec9);
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.button:hover {
+  box-shadow: 0 0 20px rgba(108, 92, 231, 0.6);
+}
+
+/* ERROR / SUCCESS */
+.error,
+.success {
+  text-align: center;
+  padding: 10px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+}
+
+.error {
+  color: #ff7675;
+  background: rgba(255,0,0,0.1);
+}
+
+.success {
+  color: #00b894;
+  background: rgba(0,255,150,0.1);
+}
+
+/* MOBILE */
+@media (max-width: 480px) {
+  .card {
+    padding: 20px;
   }
 }

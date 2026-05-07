@@ -37,7 +37,7 @@ useEffect(() => {
 
   const fetchInbox = async () => {
 
-    if (!user?.email) return;
+    if (!user?.email) { console.log("User email not found"); return; };
 
     try {
 

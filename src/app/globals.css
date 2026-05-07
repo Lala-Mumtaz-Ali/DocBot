@@ -1,15 +1,101 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Poppins:wght@400;500;600&display=swap');
-*{
+/* GOOGLE FONTS */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+
+/* RESET */
+* {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
+/* BODY */
 body {
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
   min-height: 100vh;
   font-family: "Inter", sans-serif;
-  color: #333;
+  color: #ffffff;
+
+  /* ✅ EXACT SAME BACKGROUND AS COMPLETE PROFILE */
+  background: linear-gradient(135deg, #0f0f1a, #1a1a2e, #0f3460);
+
+  overflow-x: hidden;
+  position: relative;
 }
 
-/* === RESPONSIVE DESIGN === */
+/* 🔥 GLOW EFFECT (MATCHED) */
+body::before,
+body::after {
+  content: "";
+  position: fixed;
+  width: 350px;
+  height: 350px;
+
+  background:transparent;
+  filter: blur(120px);
+
+  z-index: -1;
+  animation: float 8s infinite alternate ease-in-out;
+}
+
+/* SECOND GLOW */
+body::after {
+  background: transparent;
+  right: -100px;
+  bottom: -100px;
+}
+
+/* ANIMATION (MATCHED SPEED) */
+@keyframes float {
+  from {
+    transform: translateY(0px);
+  }
+  to {
+    transform: translateY(-40px);
+  }
+}
+
+/* SCROLLBAR (MATCHED THEME) */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0f0f1a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #6c5ce7, #00cec9);
+  border-radius: 10px;
+}
+
+/* LINKS */
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+/* BUTTON RESET */
+button {
+  font-family: inherit;
+  border: none;
+  outline: none;
+}
+
+/* INPUT RESET */
+input,
+select {
+  font-family: inherit;
+  background: transparent;
+  color: #fff;
+}
+
+/* PLACEHOLDER */
+input::placeholder {
+  color: #888;
+}
+
+/* RESPONSIVE BASE */
+@media (max-width: 768px) {
+  body {
+    font-size: 14px;
+  }
+}

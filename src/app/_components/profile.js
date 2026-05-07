@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";  // ✅ Fix: Use next/navigation (not next/router) for App Router
 import styles from "../style/profile.module.css";
 import {
+  FaCity,
   FaUserCircle,
   FaEnvelope,
   FaPhoneAlt,
@@ -11,6 +13,7 @@ import {
 } from "react-icons/fa";
 
 const Profile = () => {
+  const router = useRouter();
   const [userdata, setUserdata] = useState(null);
   const [error, setError] = useState(null);
 
@@ -85,13 +88,17 @@ const Profile = () => {
             <span>{userdata.address}</span>
           </div>
           <div className={styles.infoItem}>
+            <FaCity className={styles.icon} />
+            <span>{userdata.city}</span>
+          </div>
+          <div className={styles.infoItem}>
             <FaEdit className={styles.icon} />
             <span>Joined {userdata.createdAt || "recently"}</span>
           </div>
         </div>
 
         {/* Edit button */}
-        <button className={styles.editButton}>
+        <button  className={styles.editButton} onClick={() => router.push('/edit-profile')}>
           <FaEdit /> Edit Profile
         </button>
       </div>

@@ -1,16 +1,11 @@
 "use client";
 
-import {
-  useEffect,
-  useState,
-} from "react";
-
-import {
-  useRouter,
-} from "next/navigation";
-
-import styles
-from "../style/complete-profile.module.css";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { motion } from "framer-motion"; // ✅ HERE
+import styles from "../style/complete-profile.module.css";
+import Footer from "../_components/aboutus";
+import SignNavbar from "../_components/signnavbar";
 
 export default function CompleteProfile() {
 
@@ -262,243 +257,104 @@ export default function CompleteProfile() {
   // UI
   // ============================================
 
-  return (
-
-    <div
-      className={
-        styles.container
-      }
+return (
+  <>
+  <SignNavbar />
+  <div className={styles.container}>
+    <motion.div
+      className={styles.card}
+      initial={{ opacity: 0, y: 40, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.5 }}
     >
+      <h1 className={styles.title}>
+        Complete Your Profile
+      </h1>
 
-      <div
-        className={
-          styles.card
-        }
-      >
-
-        <h1
-          className={
-            styles.title
-          }
+      {error && (
+        <motion.p
+          className={styles.error}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
         >
-          Complete Your Profile
-        </h1>
+          {error}
+        </motion.p>
+      )}
 
-        {/* ERROR */}
-
-        {error && (
-
-          <p
-            className={
-              styles.error
-            }
-          >
-            {error}
-          </p>
-        )}
-
-        {/* SUCCESS */}
-
-        {success && (
-
-          <p
-            className={
-              styles.success
-            }
-          >
-            {success}
-          </p>
-        )}
-
-        {/* NAME */}
-
-        <input
-          className={
-            styles.input
-          }
-
-          value={form.name}
-
-          disabled
-        />
-
-        {/* EMAIL */}
-
-        <input
-          className={
-            styles.input
-          }
-
-          value={form.email}
-
-          disabled
-        />
-
-        {/* ADDRESS */}
-
-        <input
-          className={
-            styles.input
-          }
-
-          name="address"
-
-          value={
-            form.address
-          }
-
-          placeholder="Address"
-
-          onChange={
-            handleChange
-          }
-        />
-
-        {/* CITY */}
-
-        <input
-          className={
-            styles.input
-          }
-
-          name="city"
-
-          value={
-            form.city
-          }
-
-          placeholder="City"
-
-          onChange={
-            handleChange
-          }
-        />
-
-        {/* CONTACT */}
-
-        <input
-          className={
-            styles.input
-          }
-
-          name="contact"
-
-          value={
-            form.contact
-          }
-
-          placeholder="03XXXXXXXXX"
-
-          onChange={
-            handleChange
-          }
-        />
-
-        {/* ROLE */}
-
-        <select
-          className={
-            styles.input
-          }
-
-          name="role"
-
-          value={
-            form.role
-          }
-
-          onChange={
-            handleChange
-          }
+      {success && (
+        <motion.p
+          className={styles.success}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
         >
+          {success}
+        </motion.p>
+      )}
 
-          <option value="">
-            Select Role
-          </option>
+      {/* Floating Inputs */}
 
-          <option value="hospital">
-            Hospital
-          </option>
-
-          <option value="doctor">
-            Doctor
-          </option>
-
-          <option value="patient">
-            Patient
-          </option>
-
-        </select>
-
-        {/* PASSWORD */}
-
-        <input
-          className={
-            styles.input
-          }
-
-          type="password"
-
-          name="password"
-
-          value={
-            form.password
-          }
-
-          placeholder="Password"
-
-          onChange={
-            handleChange
-          }
-          disabled
-        />
-
-        {/* CONFIRM PASSWORD */}
-
-        <input
-          className={
-            styles.input
-          }
-
-          type="password"
-
-          name="confirmPassword"
-
-          value={
-            form.confirmPassword
-          }
-
-          placeholder="Confirm Password"
-
-          onChange={
-            handleChange
-          }
-          disabled
-        />
-
-        {/* BUTTON */}
-
-        <button
-          className={
-            styles.button
-          }
-
-          onClick={
-            handleSubmit
-          }
-
-          disabled={
-            loading
-          }
-        >
-
-          {loading
-            ? "Creating Account..."
-            : "Complete Signup"}
-
-        </button>
-
+      <div className={styles.group}>
+        <input value={form.name} disabled />
       </div>
-    </div>
-  );
+
+      <div className={styles.group}>
+        <input value={form.email} disabled />
+      </div>
+
+      <div className={styles.group}>
+        <input
+          name="address"
+          value={form.address}
+          onChange={handleChange}
+          required
+          placeholder="Address"
+        />
+      </div>
+
+      <div className={styles.group}>
+        <input
+          name="city"
+          value={form.city}
+          onChange={handleChange}
+          required
+          placeholder="City"
+        />
+      </div>
+
+      <div className={styles.group}>
+        <input
+          name="contact"
+          value={form.contact}
+          onChange={handleChange}
+          required
+          placeholder="03XXXXXXXXX"
+        />
+      </div>
+
+      {/* Role */}
+      <select
+        className={styles.select}
+        name="role"
+        value={form.role}
+        onChange={handleChange}
+      >
+        <option value="">Select Role</option>
+        <option value="hospital">🏥 Hospital</option>
+        <option value="doctor">👨‍⚕️ Doctor</option>
+        <option value="patient">🧑 Patient</option>
+      </select>
+
+      <motion.button
+        whileTap={{ scale: 0.95 }}
+        className={styles.button}
+        onClick={handleSubmit}
+        disabled={loading}
+      >
+        {loading ? "Creating..." : "Complete Signup"}
+      </motion.button>
+    </motion.div>
+  </div>
+  <Footer  />
+  </>
+);
 }

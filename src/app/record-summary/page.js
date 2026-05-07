@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Navbar from '../_components/navbar'
 import ReactMarkdown from 'react-markdown'
 import styles from '../style/recordSummary.module.css'
+import Footer from '../_components/aboutus'
 
 // ─────────────────────────────────────────────────────────────
 // CHART COMPONENT
@@ -274,6 +275,7 @@ export default function RecordSummaryPage() {
   // RENDER
   // ─────────────────────────────────────────────────────────────
   return (
+    <>
     <div className={styles.page}>
       <Navbar />
 
@@ -519,5 +521,7 @@ export default function RecordSummaryPage() {
         </>
       )}
     </div>
+    <Footer  />
+    </>
   )
 }
