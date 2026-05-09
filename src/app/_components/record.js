@@ -8,9 +8,6 @@ import {
   FaList,
   FaTrash,
   FaShare,
-  FaTimes,
-  FaSearchPlus,
-  FaSearchMinus,
   FaDownload,
   FaEye,
 } from "react-icons/fa";
@@ -27,9 +24,15 @@ export default function RecordPage() {
   const [showSendPopup, setShowSendPopup] = useState(false);
   const [sendTo, setSendTo] = useState("");
   const [selectedFileId, setSelectedFileId] = useState(null);
+  const [toast, setToast] = useState({ message: "", type: "", visible: false });
 
   const token =
     typeof window !== "undefined" ? localStorage.getItem("token") : null;
+
+  const showToast = (message, type = "success") => {
+    setToast({ message, type, visible: true });
+    setTimeout(() => setToast({ message: "", type: "", visible: false }), 3000);
+  };
 
   /* ---------------- Fetch Records ---------------- */
 
@@ -70,7 +73,10 @@ export default function RecordPage() {
   };
 
   const handleUpload = async () => {
-    if (!file) return alert("Choose file first");
+    if (!file) {
+      showToast("Choose file first", "error");
+      return;
+    }
 
     setLoading(true);
 
@@ -87,14 +93,15 @@ export default function RecordPage() {
       const data = await res.json();
 
       if (res.ok) {
-        alert("Record uploaded successfully");
+        showToast("Record uploaded successfully");
         setFile(null);
         fetchRecords();
       } else {
-        alert(data.message);
+        showToast(data.message || "Upload failed", "error");
       }
     } catch (err) {
       console.error(err);
+      showToast("Upload failed", "error");
     }
 
     setLoading(false);
@@ -103,7 +110,7 @@ export default function RecordPage() {
   /* ---------------- Delete ---------------- */
 
   const handleDelete = async (id) => {
-    if (!confirm("Delete this record?")) return;
+    if (!confirm("Delete this record permanently?")) return;
 
     const previous = [...records];
     setRecords((prev) => prev.filter((r) => r._id !== id));
@@ -120,9 +127,13 @@ export default function RecordPage() {
 
       if (!res.ok) {
         setRecords(previous);
+        showToast("Failed to delete record", "error");
+      } else {
+        showToast("Record deleted successfully");
       }
     } catch (err) {
       setRecords(previous);
+      showToast("Delete error", "error");
     }
   };
 
@@ -137,7 +148,7 @@ export default function RecordPage() {
       const blob = await res.blob();
       return URL.createObjectURL(blob);
     } catch {
-      alert("File loading error");
+      showToast("File loading error", "error");
       return null;
     }
   };
@@ -161,7 +172,6 @@ export default function RecordPage() {
     const blobUrl = await fetchFileBlob(rec._id);
 
     if (blobUrl) {
-
       setRecords((prev) =>
         prev.map((r) =>
           r._id === rec._id ? { ...r, tempUrl: blobUrl } : r
@@ -196,44 +206,42 @@ export default function RecordPage() {
 
   /* ---------------- Send ---------------- */
 
- const handleSend = async () => {
+  const handleSend = async () => {
 
-  if (!sendTo || !selectedFileId) {
-    alert("Enter recipient email");
-    return;
-  }
-
-  try {
-
-    const res = await fetch("/api/inbox", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      
-      body: JSON.stringify({
-        senderEmail: JSON.parse(localStorage.getItem("user")).email,
-        receiverEmail: sendTo,
-        record: selectedFileId
-      }),
-    });
-
-    const data = await res.json();
-    console.log("SEND RESPONSE:", data);
-
-    if (res.ok) {
-      alert("Record sent successfully");
-      setShowSendPopup(false);
-      setSendTo("");
-    } else {
-      alert(data.message || "Send failed");
+    if (!sendTo || !selectedFileId) {
+      showToast("Enter recipient email", "error");
+      return;
     }
 
-  } catch (err) {
-    console.error(err);
-  }
-};
+    try {
+      const res = await fetch("/api/inbox", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          senderEmail: JSON.parse(localStorage.getItem("user")).email,
+          receiverEmail: sendTo,
+          record: selectedFileId,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        showToast("Record sent successfully");
+        setShowSendPopup(false);
+        setSendTo("");
+      } else {
+        showToast(data.message || "Send failed", "error");
+      }
+    } catch (err) {
+      console.error(err);
+      showToast("Server error", "error");
+    }
+  };
+
   /* ---------------- Zoom ---------------- */
 
   const zoomIn = () => setZoom((z) => Math.min(z + 0.2, 3));
@@ -273,11 +281,20 @@ export default function RecordPage() {
 
         <div className={styles.uploadSection}>
 
-          <input
-            type="file"
-            onChange={handleFileChange}
-            className={styles.inputFile}
-          />
+          <label className={styles.fileWrapper}>
+            <input
+              type="file"
+              onChange={handleFileChange}
+              className={styles.hiddenFileInput}
+            />
+            <div className={styles.inputFile}>
+              {file ? (
+                <>📄 <strong>{file.name}</strong></>
+              ) : (
+                "Click to upload or drag & drop file"
+              )}
+            </div>
+          </label>
 
           <div className={styles.buttonGroup}>
 
@@ -430,6 +447,21 @@ export default function RecordPage() {
           </div>
 
         </div>
+      )}
+
+      {/* Toast */}
+
+      {toast.visible && (
+        <>
+          <div className={styles.toastOverlay} />
+          <div
+            className={`${styles.toast} ${
+              toast.type === "error" ? styles.toastError : styles.toastSuccess
+            }`}
+          >
+            {toast.message}
+          </div>
+        </>
       )}
 
     </div>

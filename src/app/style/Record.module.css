@@ -90,6 +90,17 @@
 }
 
 /* FILE INPUT */
+.hiddenFileInput {
+  display: none;
+}
+
+.fileWrapper {
+  position: relative;
+  width: 100%;
+  max-width: 500px;
+  cursor: pointer;
+}
+
 .inputFile {
   width: 100%;
   max-width: 500px;
@@ -297,6 +308,86 @@
 
   border: none;
   width: 100%;
+}
+
+.popupCancel {
+  background: rgba(255, 255, 255, 0.08);
+  color: #bbb;
+
+  border-radius: 10px;
+  padding: 12px;
+  margin-top: 0.5rem;
+
+  border: none;
+  width: 100%;
+  cursor: pointer;
+}
+
+/* ================= TOAST ================= */
+.toast {
+  position: fixed;
+  top: 5%;
+  left: 50%;
+  transform: translateX(-50%);
+
+  padding: 14px 18px;
+  border-radius: 12px;
+  color: white;
+  font-weight: 600;
+  font-size: 0.9rem;
+
+  z-index: 9999;
+  white-space: nowrap;
+  text-align: center;
+
+  animation: toastIn 0.35s ease, toastOut 0.4s ease 2.6s;
+}
+
+.toastOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 9998;
+
+  animation: overlayFadeIn 0.3s ease, overlayFadeOut 0.4s ease 2.6s;
+}
+
+.toastSuccess {
+  background: darkcyan;
+}
+
+.toastError {
+  background: #d32f2f;
+}
+
+@keyframes toastIn {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.85);
+  }
+  70% {
+    opacity: 1;
+    transform: translateX(-50%) scale(1.05);
+  }
+  100% {
+    transform: translateX(-50%) scale(1);
+  }
+}
+
+@keyframes toastOut {
+  to {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.9);
+  }
+}
+
+@keyframes overlayFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes overlayFadeOut {
+  to { opacity: 0; }
 }
 
 /* ================= RESPONSIVE ================= */
