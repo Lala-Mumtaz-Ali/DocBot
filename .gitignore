@@ -60,3 +60,8 @@ diabetes_ml/*.pyc
 Model_Training_Material/fhir/
 Sample_Diabetes_Pdfs/
 data_DocBot_Chat/
+
+# FYP documents
+22k-4495_DocBot_FYP_Report.docx
+DocBot_FYP_Presentation.pptx
+report.txt

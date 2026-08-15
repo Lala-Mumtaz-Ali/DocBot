@@ -1,7 +1,14 @@
 fastapi>=0.115.0
 uvicorn>=0.30.6
-xgboost>=2.1.3
+# The committed .pkl bundles are pickled estimators, so they are coupled to the
+# XGBoost major version that wrote them (3.x). Loading them under a different
+# major triggers a compatibility warning and risks breaking outright — hence the
+# upper bound. If you move to 4.x, re-run the training scripts to regenerate them.
+xgboost>=3.4.1,<4.0.0
 scikit-learn>=1.5.2
 numpy>=2.1.0
 joblib>=1.4.2
 pydantic>=2.9.2
+# Not imported by main.py, but required by ingest_fhir.py, train_model.py,
+# train_forecast_model.py and evaluate_model.py.
+pandas>=2.2.0

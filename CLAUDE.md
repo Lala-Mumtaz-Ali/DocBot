@@ -31,6 +31,7 @@ MONGODB_COLLECTION=         # Default: medical_embeddings
 MONGODB_VECTOR_INDEX=       # Default: vector_index
 GEN_MODEL=                  # Default: llama-3.3-70b-versatile (Groq model for chat + extraction)
 CONDENSE_MODEL=             # Default: llama-3.1-8b-instant (Groq model for query rewriting)
+OCR_MODEL=                  # Default: qwen/qwen3.6-27b (Groq vision model for scanned-page OCR)
 EMBED_MODEL=                # Default: all-MiniLM-L6-v2 (sentence-transformers, 384 dims)
 ML_SERVICE_URL=             # Default: http://localhost:8001
 PYTHON_BACKEND_URL=         # Default: http://localhost:8000
@@ -82,7 +83,7 @@ No Jest or Pytest suite — testing is done via the ad-hoc scripts above.
 |---|---|---|
 | Python `/chat` (answer) | `llama-3.3-70b-versatile` | Chat answers from RAG context |
 | Python `/chat` (rewrite) | `llama-3.1-8b-instant` | Conversational query condensation |
-| Python `/extract_pdf_text` + `/analyze_report` (OCR) | `meta-llama/llama-4-scout-17b-16e-instruct` | Vision-based OCR fallback for scanned pages |
+| Python `/extract_pdf_text` + `/analyze_report` (OCR) | `qwen/qwen3.6-27b` | Vision-based OCR fallback for scanned pages |
 | Python `/analyze_report` (extraction) | `llama-3.3-70b-versatile` | JSON extraction from report text |
 | Next.js `/api/extract-report` | `llama-3.3-70b-versatile` | JSON extraction (called via Groq REST API directly) |
 | Next.js `/api/analyze-trend` | `llama-3.3-70b-versatile` | Patient-friendly trend explanation |
@@ -101,7 +102,7 @@ All Groq calls go through either the official `groq` Python client (Python backe
 
 ### PDF Handling (Python backend)
 
-- `POST /extract_pdf_text` — PyMuPDF primary text extraction. Falls back to **Groq Vision** (`meta-llama/llama-4-scout-17b-16e-instruct`) when a page yields fewer than 50 chars (typical of scanned PDFs).
+- `POST /extract_pdf_text` — PyMuPDF primary text extraction. Falls back to **Groq Vision** (`qwen/qwen3.6-27b`) when a page yields fewer than 50 chars (typical of scanned PDFs).
 - `POST /analyze_report` — same extraction pipeline + regex HbA1c/glucose hints + Groq JSON output. Used by the chat page's attach-PDF button.
 
 ### Report Extraction Pipeline (Next.js routes)
@@ -246,13 +247,21 @@ JWT is stored in `localStorage` as `user` (object) and `token` (string). Protect
 | `evaluate_model.py` | Sanity-check the saved classifier against `data/processed/features.csv` |
 | `models/xgboost_model.pkl` | Trained classifier bundle (`{model, feature_order, class_names}`) |
 | `models/xgboost_forecast.pkl` | Trained regressor bundle (`{model, feature_order}`) |
-| `requirements.txt` | fastapi, uvicorn, xgboost, scikit-learn, numpy, joblib, pydantic |
+| `requirements.txt` | fastapi, uvicorn, xgboost, scikit-learn, numpy, joblib, pydantic, pandas |
+
+Both `.pkl` files are **joblib-pickled estimators**, which couples them to the
+XGBoost major version that wrote them (currently 3.x — hence the `<4.0.0` pin in
+`diabetes_ml/requirements.txt`). Loading a bundle under a different major prints a
+compatibility warning and is not guaranteed to work. When bumping XGBoost across a
+major, re-run `train_model.py` and `train_forecast_model.py` to regenerate them, or
+migrate in place by round-tripping each estimator through `save_model()` /
+`load_model()` under the new version.
 
 ## Key Architectural Notes
 
 - **Embedding model must match between ingest and query**: both use `all-MiniLM-L6-v2` (384 dims). The ingest script uses the Xenova JS port; the Python backend uses sentence-transformers. They are the same underlying model and produce compatible vectors.
 - **Groq is the only external LLM provider in the current code.** Older docs and a few stale identifiers (`ollama` variable in `main.py`, `generate_deepseek_response` function name, the unused `OllamaEmbeddings` class in `src/app/lib/embeddings.js`, a `// DeepSeek R1` comment in `extract-report/route.js`) refer to providers that are no longer wired up. Treat them as cosmetic only.
-- **OCR is Groq Vision** (`meta-llama/llama-4-scout-17b-16e-instruct`), not EasyOCR or Tesseract. EasyOCR is **not** a dependency.
+- **OCR is Groq Vision** (`qwen/qwen3.6-27b`), not EasyOCR or Tesseract. EasyOCR is **not** a dependency. Qwen is a *reasoning* model, so `ocr_with_groq()` passes `reasoning_format="hidden"` to keep `<think>` blocks out of the extracted text; non-reasoning models reject that parameter with a 400, so the call retries once without it. A `NotFoundError` is logged with a distinct "model decommissioned" message, since otherwise a retired model makes scanned PDFs silently extract to empty text. It replaced `meta-llama/llama-4-scout-17b-16e-instruct`, which Groq decommissioned (404 `model_not_found`); Scout and Maverick are both gone, and Qwen is currently the only vision-capable model Groq serves.
 - **`userId` in PatientReport is the user's email string**, not a MongoDB ObjectId. This is used as the lookup key in trend analysis.
 - **Record binary storage**: files are stored as raw `Buffer` in MongoDB (`fileData` field). `/api/cdn/` is a separate legacy mechanism that reads from `public/uploads/` filesystem — not connected to the MongoDB records collection.
 - **ML microservice graceful degradation**: if port 8001 is unreachable, `/api/analyze-trend` falls back to a rule-based HbA1c threshold for the risk score and omits the forecast block from the LLM prompt.

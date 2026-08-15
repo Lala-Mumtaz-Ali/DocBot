@@ -8,5 +8,5 @@ requests
 python-multipart
 pypdf
 pymupdf
-groq
+groq>=1.6.0,<2.0.0
 sentence-transformers

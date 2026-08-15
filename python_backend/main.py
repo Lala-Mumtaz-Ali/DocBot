@@ -9,11 +9,20 @@ import os
 import base64
 from dotenv import load_dotenv
 from embeddings import LocalEmbeddings
-from groq import Groq
+from groq import BadRequestError, Groq, NotFoundError
 import torch
 import requests
 import json
 import re
+import sys
+
+# This module logs with emoji and echoes OCR'd text that is frequently
+# non-Latin. On Windows the console defaults to a legacy codepage (cp1252),
+# where those prints raise UnicodeEncodeError — which the request handlers
+# catch and turn into a 500, hiding an otherwise successful extraction.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
 
 # Load environment variables
 # Try loading from the unified Next.js root config first, then fallback to local .env
@@ -57,7 +66,13 @@ groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 # ============================
 # GROQ VISION OCR
 # ============================
-OCR_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+OCR_MODEL = os.getenv("OCR_MODEL", "qwen/qwen3.6-27b")
+# Reasoning models spend completion tokens on hidden reasoning before emitting
+# any text, so this ceiling has to cover both. At 4096 a dense scanned page
+# would exhaust the budget mid-reasoning and return nothing (finish_reason
+# "length"). 16384 is the current OCR_MODEL's max_completion_tokens, and unused
+# headroom is not billed.
+OCR_MAX_TOKENS = int(os.getenv("OCR_MAX_TOKENS", "16384"))
 
 def ocr_with_groq(page_image_bytes: bytes) -> str:
     """Extract text from a scanned page image using Groq vision model."""
@@ -66,32 +81,72 @@ def ocr_with_groq(page_image_bytes: bytes) -> str:
         return ""
     try:
         image_b64 = base64.b64encode(page_image_bytes).decode("utf-8")
-        response = groq_client.chat.completions.create(
-            model=OCR_MODEL,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/png;base64,{image_b64}"},
-                        },
-                        {
-                            "type": "text",
-                            "text": (
-                                "Extract ALL text from this medical document image exactly as it appears. "
-                                "Preserve the layout with line breaks. "
-                                "Return only the raw extracted text, no commentary."
-                            ),
-                        },
-                    ],
-                }
-            ],
-            max_tokens=4096,
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{image_b64}"},
+                    },
+                    {
+                        "type": "text",
+                        "text": (
+                            "Extract ALL text from this medical document image exactly as it appears. "
+                            "Preserve the layout with line breaks. "
+                            "Return only the raw extracted text, no commentary."
+                        ),
+                    },
+                ],
+            }
+        ]
+        try:
+            # The default OCR_MODEL is a reasoning model; without this it
+            # prefixes the extracted text with a <think> block that pollutes
+            # downstream regex hints and JSON extraction.
+            response = groq_client.chat.completions.create(
+                model=OCR_MODEL,
+                messages=messages,
+                max_tokens=OCR_MAX_TOKENS,
+                reasoning_format="hidden",
+            )
+        except BadRequestError as e:
+            # Non-reasoning vision models reject reasoning_format outright.
+            # Retry without it so OCR_MODEL can point at either kind.
+            if "reasoning_format" not in str(e):
+                raise
+            print(
+                f"Groq OCR: model '{OCR_MODEL}' does not support reasoning_format; "
+                f"retrying without it."
+            )
+            response = groq_client.chat.completions.create(
+                model=OCR_MODEL,
+                messages=messages,
+                max_tokens=OCR_MAX_TOKENS,
+            )
+        choice = response.choices[0]
+        if choice.finish_reason == "length":
+            # Hidden reasoning is still billed against max_tokens, so a dense
+            # page can consume the whole budget and leave no text at all.
+            print(
+                f"Groq OCR WARNING: hit the {OCR_MAX_TOKENS}-token cap before "
+                f"finishing (finish_reason=length); this page's text may be "
+                f"truncated or empty. Raise OCR_MAX_TOKENS if it recurs."
+            )
+        return choice.message.content or ""
+    except NotFoundError:
+        # Groq retires vision models without notice (this is how
+        # meta-llama/llama-4-scout-17b-16e-instruct disappeared). Call it out
+        # loudly — otherwise scanned PDFs silently extract to empty text.
+        print(
+            f"Groq OCR FAILED: model '{OCR_MODEL}' does not exist or is not "
+            f"available to this API key. It has most likely been decommissioned. "
+            f"Check https://console.groq.com/docs/models for a current "
+            f"vision-capable model and set the OCR_MODEL env var to it."
         )
-        return response.choices[0].message.content or ""
+        return ""
     except Exception as e:
-        print(f"Groq OCR error: {e}")
+        print(f"Groq OCR error (model '{OCR_MODEL}'): {type(e).__name__}: {e}")
         return ""
 
 class ChatRequest(BaseModel):
