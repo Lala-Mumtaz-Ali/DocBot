@@ -257,6 +257,11 @@ major, re-run `train_model.py` and `train_forecast_model.py` to regenerate them,
 migrate in place by round-tripping each estimator through `save_model()` /
 `load_model()` under the new version.
 
+That pin also sets a Python floor: xgboost 3.3.0+ declares `Requires-Python >=3.12`,
+so `diabetes_ml/Dockerfile` must stay on `python:3.12-slim` or newer. On 3.11 pip
+resolves no further than xgboost 3.2.0 and the Space build fails outright.
+(`python_backend/Dockerfile` is unaffected and still builds on 3.11.)
+
 ## Key Architectural Notes
 
 - **Embedding model must match between ingest and query**: both use `all-MiniLM-L6-v2` (384 dims). The ingest script uses the Xenova JS port; the Python backend uses sentence-transformers. They are the same underlying model and produce compatible vectors.

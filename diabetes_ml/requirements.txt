@@ -4,6 +4,8 @@ uvicorn>=0.30.6
 # XGBoost major version that wrote them (3.x). Loading them under a different
 # major triggers a compatibility warning and risks breaking outright — hence the
 # upper bound. If you move to 4.x, re-run the training scripts to regenerate them.
+# NOTE: this floor requires Python >=3.12 (xgboost 3.3.0+ declares that), which
+# is why the Dockerfile pins python:3.12-slim. Do not lower the base image.
 xgboost>=3.4.1,<4.0.0
 scikit-learn>=1.5.2
 numpy>=2.1.0
