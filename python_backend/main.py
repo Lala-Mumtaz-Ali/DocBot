@@ -67,12 +67,17 @@ groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 # GROQ VISION OCR
 # ============================
 OCR_MODEL = os.getenv("OCR_MODEL", "qwen/qwen3.6-27b")
-# Reasoning models spend completion tokens on hidden reasoning before emitting
-# any text, so this ceiling has to cover both. At 4096 a dense scanned page
-# would exhaust the budget mid-reasoning and return nothing (finish_reason
-# "length"). 16384 is the current OCR_MODEL's max_completion_tokens, and unused
-# headroom is not billed.
-OCR_MAX_TOKENS = int(os.getenv("OCR_MAX_TOKENS", "16384"))
+# Two competing constraints:
+#   * Reasoning models spend completion tokens on hidden reasoning before
+#     emitting any text, so too low a ceiling exhausts the budget mid-reasoning
+#     and returns nothing (finish_reason "length"). 4096 failed ~1 page in 3.
+#   * Groq counts max_tokens toward the per-request tokens-per-minute budget,
+#     so too high a ceiling is rejected outright with HTTP 413 before the
+#     model ever runs. The free tier allows 8000 TPM for OCR_MODEL, and a
+#     rendered page costs ~1834 prompt tokens, leaving ~6100.
+# 6000 satisfies both. Raise it via the env var on a paid tier with a higher
+# TPM allowance; the model's own ceiling is 16384.
+OCR_MAX_TOKENS = int(os.getenv("OCR_MAX_TOKENS", "6000"))
 
 def ocr_with_groq(page_image_bytes: bytes) -> str:
     """Extract text from a scanned page image using Groq vision model."""
